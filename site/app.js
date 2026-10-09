@@ -86,6 +86,7 @@
     .on("click", (ev, f) => {
       state.sel = null; paint();
       const P = d3.select("#panel").html("");
+      backBtn(P);
       P.append("h3").text(f.properties.region);
       P.append("div").attr("class", "muted").text("Субъект Российской Федерации");
       P.append("p").text("Этого субъекта нет ни в справочнике муниципальных образований СберИндекса, ни в данных о расходах, поэтому он показан контуром и в типологию не входит.");
@@ -277,17 +278,39 @@
   }
   const monthFmt = (i, long) => { const [y, mm] = meta.months[i].split("-"); return long ? `${MON[+mm - 1]} ${y}` : (+mm === 1 ? y : MON[+mm - 1]); };
 
+  // стартовая карточка: по одному типичному МО (медоиду, ближайшему к центру типа) на каждый из шести типов
+  function renderHome() {
+    const P0 = d3.select("#panel").html("");
+    P0.append("h3").text("Карточка муниципалитета");
+    P0.append("p").attr("class", "muted").style("margin", "0 0 4px").text("Щёлкните любое МО на карте или найдите его через поиск — здесь появятся его тип, траты, соседи по сети и динамика.");
+    P0.append("p").attr("class", "muted").style("margin", "0").text("Для начала — самый типичный муниципалитет каждого из шести типов (ближайший к центру типа):");
+    const exList = P0.append("ul").attr("class", "examples");
+    types.forEach((t) => {
+      const id = Number(String(t.typical_ids || "").split(" ")[0]);
+      const m0 = byId.get(id) || ok.find((x) => x.type === t.id);
+      if (!m0) return;
+      exList.append("li").attr("tabindex", 0).html(`<span class="sw" style="background:${t.color}"></span><span><b>${m0.name}</b> <span class="t">${m0.region} · ${t.name}</span></span>`)
+        .on("click", () => select(m0.id, true)).on("keydown", (ev) => { if (ev.key === "Enter") select(m0.id, true); });
+    });
+  }
+  function goHome() {
+    state.sel = null; paint(); renderHome();
+    svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+  }
+  const backBtn = (P) => P.append("button").attr("type", "button").attr("class", "btn back").text("← К списку типов").on("click", goHome);
+
   function renderPanel(m) {
     const P = d3.select("#panel").html("");
+    if (m) backBtn(P);
     if (!m) return;
     P.append("h3").text(m.name);
     P.append("div").attr("class", "muted").text(`${m.region} · ${m.kind}${m.capital ? " · столица региона" : ""}`);
     if (m.status !== "ok") { P.append("p").text(m.status === "incomplete" ? "В наборе есть данные, но ряд неполный — МО не вошло в анализ." : "Регион отсутствует в наборе данных организатора."); return; }
     const t = state.period === "main" ? m.type : m.types[+state.period];
-    const lv = P.append("div").attr("class", "kv").style("margin", "6px 0");
-    lv.append("div").attr("class", "k").text("Макротип (4)");
+    const lv = P.append("div").attr("class", "levels");
+    lv.append("div").attr("class", "k").text("Макротип");
     lv.append("div").html(`<span class="chip"><span class="sw" style="background:${macro[m.macro].color}"></span>${macro[m.macro].name}</span>`);
-    lv.append("div").attr("class", "k").text("Тип (6)");
+    lv.append("div").attr("class", "k").text("Тип");
     lv.append("div").html(`<span class="chip"><span class="sw" style="background:${dColor(t)}"></span>${dName(t)}</span>`);
     if (types[m.type].macro !== m.macro) P.append("div").attr("class", "muted").style("font-size", "12px")
       .text(`МО на границе уровней: тип «${dName(m.type)}» в основном входит в макротип «${macro[types[m.type].macro].name}» (так у ${fPct0(ok.filter((x) => types[x.type].macro !== x.macro).length / ok.length)} МО).`);
@@ -737,16 +760,7 @@
 
   buildScale();
   paint();
-  // по умолчанию — подсказка и типичные представители типов (медоиды), а не пограничный случай
-  const P0 = d3.select("#panel").html("");
-  P0.append("h3").text("Карточка муниципалитета");
-  P0.append("p").attr("class", "muted").style("margin", "0").text("Щёлкните МО на карте или найдите через поиск. Типичные представители типов:");
-  const exList = P0.append("ul").attr("class", "examples");
-  types.forEach((t) => {
-    const id = Number(String(t.typical_ids || "").split(" ")[0]);
-    const m0 = byId.get(id) || ok.find((x) => x.type === t.id);
-    if (!m0) return;
-    exList.append("li").attr("tabindex", 0).html(`<span class="sw" style="background:${t.color}"></span><span><b>${m0.name}</b><span class="t">${m0.region} · ${t.name}</span></span>`)
-      .on("click", () => select(m0.id, true)).on("keydown", (ev) => { if (ev.key === "Enter") select(m0.id, true); });
-  });
+  renderHome();
+  // Esc — вернуться к стартовой карточке
+  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && state.sel != null) goHome(); });
 })();

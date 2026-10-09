@@ -1,6 +1,6 @@
 /* Лендинг «Типы локальных экономик России». Чистый D3 v7, данные — site/data/*.json. */
 (async function () {
-  const DATA_VERSION = "20261009y"; // меняется при пересборке данных, чтобы браузер не брал старые из кэша
+  const DATA_VERSION = "20261010d"; // меняется при пересборке данных, чтобы браузер не брал старые из кэша
   const ru = d3.formatLocale({ decimal: ",", thousands: " ", grouping: [3], currency: ["", " ₽"] });
   const fInt = ru.format(",.0f"), fPct = ru.format(".1%"), f2 = ru.format(".2f"), f3 = ru.format(".3f"), fPct0 = ru.format(".0%");
   const MON = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
@@ -15,8 +15,9 @@
   // ряды по месяцам (1,5 МБ) нужны только карточке МО — грузятся параллельно и не задерживают первый экран
   let series = {};
   d3.json(`data/series.json?v=${DATA_VERSION}`).then((x) => { series = x || {}; }).catch(() => {});
-  const [geo, mo, types, meta, macro] = await Promise.all([
+  const [geo, mo, types, meta, macro, layouts] = await Promise.all([
     ...["mo.geojson", "mo.json", "types.json", "meta.json", "macro.json"].map((f) => d3.json(`data/${f}?v=${DATA_VERSION}`)),
+    d3.json(`data/layouts.json?v=${DATA_VERSION}`).catch(() => null),
   ]);
   // субъекты, которых нет в справочнике МО (ДНР, ЛНР, Запорожская и Херсонская области): только контуры
   const extraP = d3.json(`data/new_regions.geojson?v=${DATA_VERSION}`).catch(() => null);
@@ -30,11 +31,16 @@
     });
     f.geometry = { type: "MultiPolygon", coordinates: polys };
   });
+  performance.mark("smc:data");
   fixRings(geo.features);
-  if (window.SMCStage) { try { window.SMCStage({ geo, mo, types, macro, meta, version: DATA_VERSION }); } catch (e) { console.error(e); } }
+  performance.mark("smc:rings");
+  await new Promise((r) => setTimeout(r, 0)); // отдельная задача для сцены
+  if (window.SMCStage) { try { window.SMCStage({ geo, mo, types, macro, meta, layouts, version: DATA_VERSION }); } catch (e) { console.error(e); } }
+  performance.mark("smc:stage");
   // дать браузеру нарисовать первый кадр сцены до тяжёлой сборки карты и графиков
   const yieldFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
   await yieldFrame();
+  performance.mark("smc:yield1");
   const extra = await extraP;
   if (extra) fixRings(extra.features);
   const byId = new Map(mo.map((m) => [m.id, m]));
@@ -81,7 +87,8 @@
   /* ---------- фильтры ---------- */
   const per = d3.select("#f-period");
   per.append("option").attr("value", "main").text("Весь период");
-  W.forEach((e, i) => per.append("option").attr("value", i).text("Окно: " + winLabel(e)));
+  const winShort = (end) => { const [y, mm] = end.split("-").map(Number); const s = new Date(y, mm - 12, 1); return `${MON[s.getMonth()]} ${String(s.getFullYear()).slice(2)} – ${MON[mm - 1]} ${String(y).slice(2)}`; };
+  W.forEach((e, i) => per.append("option").attr("value", i).text(winShort(e)));
   const regions = [...new Set(mo.map((m) => m.region))].sort((a, b) => a.localeCompare(b, "ru"));
   d3.select("#f-region").selectAll("option.r").data(regions).join("option").attr("class", "r").attr("value", (d) => d).text((d) => d);
   const kinds = [...new Set(mo.map((m) => m.kind))].sort();
@@ -91,7 +98,8 @@
   /* ---------- карта ---------- */
   const MW = 1000, MH = 540;
   const svg = d3.select("#map-svg").attr("viewBox", `0 0 ${MW} ${MH}`);
-  const proj = d3.geoConicEqualArea().parallels([52, 64]).rotate([-100, 0]).fitExtent([[6, 6], [MW - 6, MH - 6]], geo);
+  const proj = layouts && layouts.scale ? d3.geoConicEqualArea().parallels([52, 64]).rotate([-100, 0]).scale(layouts.scale).translate(layouts.translate)
+    : d3.geoConicEqualArea().parallels([52, 64]).rotate([-100, 0]).fitExtent([[6, 6], [MW - 6, MH - 6]], geo);
   const path = d3.geoPath(proj);
   const g = svg.append("g");
   const extraLayer = g.append("g").attr("class", "extra-layer");
@@ -107,7 +115,12 @@
       P.append("p").text("Этого субъекта нет ни в справочнике муниципальных образований СберИндекса, ни в данных о расходах, поэтому он показан контуром и в типологию не входит.");
     });
   const geoLayer = g.append("g");
-  const paths = geoLayer.selectAll("path").data(geo.features).join("path").attr("class", "mo").attr("d", path);
+  const paths = geoLayer.selectAll("path").data(geo.features).join("path").attr("class", "mo");
+  (function fillD(i0) {
+    const els = paths.nodes(), t0 = performance.now(); let i = i0;
+    while (i < els.length && performance.now() - t0 < 30) { els[i].setAttribute("d", path(geo.features[i])); i++; }
+    if (i < els.length) requestAnimationFrame(() => fillD(i));
+  })(0);
   const featById = new Map(geo.features.map((f) => [f.id, f]));
   // равновеликая точечная карта: каждое МО — круг одного размера рядом со своим центром (силы столкновений)
   const dotLayer = g.append("g").attr("class", "dot-layer").style("display", "none");
@@ -115,6 +128,10 @@
   const DOT_R = 3.1, dotPos = new Map(), dotCache = {};
   let dots = null;
   function buildDots(mode) {
+    if (!dotCache[mode] && layouts) {
+      const byIdL = (ids, xy, r) => ids.map((id, j) => { const m = byId.get(id); return m && featById.get(id) ? { m, f: featById.get(id), x: xy[j][0], y: xy[j][1], r: Array.isArray(r) ? r[j] : r } : null; }).filter(Boolean);
+      dotCache[mode] = mode === "pop" ? byIdL(layouts.pop.id, layouts.pop.xy, layouts.pop.r) : byIdL(layouts.ids, layouts.dots.xy, layouts.dots.r);
+    }
     if (!dotCache[mode]) {
       const nodes = mo.filter((m) => m.status === "ok" && featById.get(m.id)).map((m) => { const c = path.centroid(featById.get(m.id)); return { m, f: featById.get(m.id), x: c[0], y: c[1], gx: c[0], gy: c[1] }; }).filter((d) => isFinite(d.x));
       if (mode === "pop") {
@@ -324,6 +341,7 @@
     }
   }
 
+  performance.mark("smc:map");
   await yieldFrame();
   /* ---------- карточка МО ---------- */
   function lineChart(el, opts) {
@@ -459,7 +477,9 @@
   });
   const grid = d3.select("#types-grid");
   const ordered = macro.flatMap((mc) => types.filter((t) => t.macro === mc.id));
-  const pr = d3.geoConicEqualArea().parallels([52, 64]).rotate([-100, 0]).fitExtent([[4, 4], [596, 296]], geo);
+  // мини-карты типов рисуются по одной на кадр: 6 × 2 660 контуров не блокируют страницу
+  let pr = null;
+  const miniQueue = [];
   ordered.forEach((t) => {
     const showType = () => {
       state.level = "types"; d3.select("#f-level").property("value", "types");
@@ -475,14 +495,17 @@
     c.append("h3").html(`<span class="sw" style="background:${t.color}"></span>${t.name}`);
     const cw = 600, ch = 300, dpr = window.devicePixelRatio || 1;
     const cv = c.append("canvas").attr("width", cw * dpr).attr("height", ch * dpr).attr("role", "img").attr("aria-label", `Карта: где находится тип «${t.name}»`).node();
-    const ctx = cv.getContext("2d"); ctx.scale(dpr, dpr);
-    const gp = d3.geoPath(pr, ctx);
-    if (extra) extra.features.forEach((f) => { ctx.beginPath(); gp(f); ctx.fillStyle = "#f4f3ef"; ctx.fill(); });
-    geo.features.forEach((f) => {
-      const m = byId.get(f.id);
-      ctx.beginPath(); gp(f);
-      ctx.fillStyle = m && m.status === "ok" && m.type === t.id ? t.color : (m && m.status === "ok" ? C.other : "#f4f3ef");
-      ctx.fill();
+    miniQueue.push(() => {
+      pr = pr || d3.geoConicEqualArea().parallels([52, 64]).rotate([-100, 0]).fitExtent([[4, 4], [596, 296]], geo);
+      const ctx = cv.getContext("2d"); ctx.scale(dpr, dpr);
+      const gp = d3.geoPath(pr, ctx);
+      if (extra) extra.features.forEach((f) => { ctx.beginPath(); gp(f); ctx.fillStyle = "#f4f3ef"; ctx.fill(); });
+      geo.features.forEach((f) => {
+        const m = byId.get(f.id);
+        ctx.beginPath(); gp(f);
+        ctx.fillStyle = m && m.status === "ok" && m.type === t.id ? t.color : (m && m.status === "ok" ? C.other : "#f4f3ef");
+        ctx.fill();
+      });
     });
     c.append("p").text(t.description);
     if (transitional) c.append("p").attr("class", "transit").html(`<b>Переходный тип:</b> на макроуровне его МО делятся между ${parts.map(([k, s]) => `«${macro[k].name}» ${fPct0(s)}`).join(", ")}.`);
@@ -501,6 +524,7 @@
     });
     c.append("div").attr("class", "typ").text("Типичные: " + t.typical);
   });
+  (function nextMini() { const f = miniQueue.shift(); if (f) { f(); setTimeout(() => requestAnimationFrame(nextMini), 16); } })();
   const tt = d3.select("#types-table").append("table");
   tt.append("tr").html("<th>Тип</th><th>МО</th><th>Траты, ₽</th>" + CAT_SHORT.map((c) => `<th>${c}</th>`).join("") + "<th>Летний избыток</th><th>Доступность рынков</th>");
   types.forEach((t) => tt.append("tr").html(`<td><span class="sw" style="background:${t.color}"></span> ${t.name}</td><td>${t.size}</td><td>${fInt(t.spend)}</td>` +

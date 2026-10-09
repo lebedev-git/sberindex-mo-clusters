@@ -1,9 +1,9 @@
 /* Новые проверки (site/data/v2.json): правила голосования, правила типов (IMM), синтетика, опережение,
    события кластеров, пространственная автокорреляция, Росстат, мобильность. Рисуется только то, что есть. */
 (async function () {
-  const v = await d3.json("data/v2.json?v=20261009y").catch(() => null);
+  const v = await d3.json("data/v2.json?v=20261010d").catch(() => null);
   if (!v) return;
-  const types = await d3.json("data/types.json?v=20261009y").catch(() => []);
+  const types = await d3.json("data/types.json?v=20261010d").catch(() => []);
   const ru = d3.formatLocale({ decimal: ",", thousands: " ", grouping: [3] });
   const fInt = ru.format(",.0f"), f2 = ru.format(".2f"), fPct0 = ru.format(".0%"), fPct = ru.format(".1%");
   const tById = new Map(types.map((t) => [t.id, t]));
@@ -94,7 +94,7 @@
     if (R.types && R.types.length) {
       const emp = ["ind", "agr", "min", "pub", "trade"], empRu = ["пром.", "с/х", "добыча", "бюджет", "торговля"];
       c.append("div").attr("id", "ross-table").html(`<table><thead><tr><th>Тип</th><th>Зарплата, ₽</th>${empRu.map((e) => `<th>${e}</th>`).join("")}</tr></thead><tbody>${
-        R.types.map((r) => `<tr><td class="tname">${sw(r.type)}${tn(r.type)}</td><td>${r.wage ? fInt(r.wage) : "—"}</td>${emp.map((e) => `<td>${r.emp && r.emp[e] != null ? fPct0(r.emp[e]) : "—"}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
+        R.types.map((r) => `<tr><td class="tname">${sw(r.type)} ${tn(r.type)}</td><td>${r.wage ? fInt(r.wage) : "—"}</td>${emp.map((e) => `<td>${r.emp && r.emp[e] != null ? fPct0(r.emp[e]) : "—"}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
     }
     if (R.lens) c.append("p").attr("class", "sub").style("margin-top", "10px").html(`Вторая линза — типология только по рынку труда: совпадение с нашей ARI ${f2(R.lens.ari)}, NMI ${f2(R.lens.nmi)}. Траты и занятость описывают разные стороны локальной экономики.`);
   }

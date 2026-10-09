@@ -37,13 +37,17 @@ window.SMCStage = function (D) {
 
   /* ---------- числа для текста шагов (считаются из данных, не вписаны руками) ---------- */
   const lonOf = (f) => { let l = d3.geoCentroid(f)[0]; if (l < 0) l += 360; return l; };
-  let nWest = 0, aWest = 0, aAll = 0, pWest = 0, pAll = 0;
-  nodes.forEach((n) => {
-    const f = featById.get(n.id); if (!f) return;
-    const a = d3.geoArea(f), west = lonOf(f) < 60;
-    aAll += a; if (west) { aWest += a; nWest++; }
-    if (n.m.pop) { pAll += n.m.pop; if (west) pWest += n.m.pop; }
-  });
+  // сферические площади и центры — после первого кадра (текст шага 01 ниже первого экрана)
+  setTimeout(() => {
+    let nWest = 0, aWest = 0, aAll = 0, pWest = 0, pAll = 0;
+    nodes.forEach((n) => {
+      const f = featById.get(n.id); if (!f) return;
+      const a = d3.geoArea(f), west = lonOf(f) < 60;
+      aAll += a; if (west) { aWest += a; nWest++; }
+      if (n.m.pop) { pAll += n.m.pop; if (west) pWest += n.m.pop; }
+    });
+    set("s-geo", `Западнее Урала (60° в. д.) — <b>${fPct0(nWest / N)}</b> муниципалитетов выборки и ${pAll ? fPct0(pWest / pAll) : "—"} их населения, но только <b>${fPct0(aWest / aAll)}</b> площади. Обычная карта отдаёт взгляд огромным северным районам, а большинство территорий страны — плотная мозаика на западе.`);
+  }, 1500);
   const corr = (meta.graphs || []).find((g) => g.rule === "corr") || {};
   const km = corr.median_edge_road_km ? Math.round(corr.median_edge_road_km / 10) * 10 : null;
   const syncIn = meta.justification && meta.justification.network ? meta.justification.network.sync_within_kefrin : null;
@@ -54,7 +58,6 @@ window.SMCStage = function (D) {
   const tBig = types[d3.maxIndex(byTypeN)], tSmall = types[d3.minIndex(byTypeN)];
   const arctic = types.find((t) => t.official && t.official.far_north_or_equated >= 0.99);
   const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
-  set("s-geo", `Западнее Урала (60° в. д.) — <b>${fPct0(nWest / N)}</b> муниципалитетов выборки и ${pAll ? fPct0(pWest / pAll) : "—"} их населения, но только <b>${fPct0(aWest / aAll)}</b> площади. Обычная карта отдаёт взгляд огромным северным районам, а большинство территорий страны — плотная мозаика на западе.`);
   set("s-dorling", `Уравняем веса: каждое МО становится точкой одного размера и встаёт как можно ближе к своему месту. Запад «раздувается», север сжимается — так выглядит страна, если считать территории, а не квадратные километры. Дальше важна не площадь, а то, как в них тратят деньги.`);
   set("s-net", `Свяжем каждое МО с 15 муниципалитетами, чьи месячные траты колеблются синхронно с ним (корреляция рядов, очищенных от общероссийской динамики). Раскладка t-SNE ставит рядом МО, похожие по тратам и связанные в сети; оси не имеют единиц. ${km ? `Медиана длины связи по дорогам — <b>≈${fInt(km)} км</b>: экономические соседи редко соседи по карте.` : ""}`);
   set("s-netcolor", `Цвет — тип, найденный методом KEFRiN: он ищет группы, похожие одновременно по профилю трат и по связям в сети. Типы занимают свои области сети${syncIn ? `: <b>${fPct0(syncIn)}</b> веса связей ведут внутрь своего типа` : ""}, модулярность ${f2(meta.final_icvi.MQ)} против нуля у случайного разбиения.`);
@@ -85,6 +88,10 @@ window.SMCStage = function (D) {
     return { x0: side, y0: top, x1: W - right, y1: H - bottom };
   }
 
+  // «нет полных данных» — штриховка, чтобы не путать с бледным цветом низкой уверенности
+  const HATCH = (() => { const c = document.createElement("canvas"); c.width = c.height = 6; const x = c.getContext("2d");
+    x.fillStyle = "#f6f5f2"; x.fillRect(0, 0, 6, 6); x.strokeStyle = "#cfcec7"; x.lineWidth = 0.8; x.beginPath(); x.moveTo(0, 6); x.lineTo(6, 0); x.stroke();
+    return ctx.createPattern(c, "repeat"); })();
   function buildLayer(fillOf) {
     const c = document.createElement("canvas");
     c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
@@ -101,6 +108,17 @@ window.SMCStage = function (D) {
 
   function computeGeo() {
     const F = frame();
+    const L = D.layouts;
+    if (L && L.centroid && L.bounds) {
+      // проекция и центры — из готовой раскладки: линейный перенос вместо fitExtent и path.centroid
+      const [[x0, y0], [x1, y1]] = L.bounds, k = Math.min((F.x1 - F.x0) / (x1 - x0), (F.y1 - F.y0) / (y1 - y0));
+      const cc = [(x0 + x1) / 2, (y0 + y1) / 2], cF = [(F.x0 + F.x1) / 2, (F.y0 + F.y1) / 2];
+      proj = d3.geoConicEqualArea().parallels([52, 64]).rotate([-100, 0]).scale(L.scale * k)
+        .translate([(L.translate[0] - cc[0]) * k + cF[0], (L.translate[1] - cc[1]) * k + cF[1]]);
+      path = d3.geoPath(proj);
+      const at = new Map(L.ids.map((id, j) => [id, L.centroid[j]]));
+      P.geo = nodes.map((n) => { const p = at.get(n.id); return p ? [(p[0] - cc[0]) * k + cF[0], (p[1] - cc[1]) * k + cF[1]] : [W / 2, H / 2]; });
+    } else {
     proj = d3.geoConicEqualArea().parallels([52, 64]).rotate([-100, 0]).fitExtent([[F.x0, F.y0], [F.x1, F.y1]], geo);
     path = d3.geoPath(proj);
     P.geo = nodes.map((n) => {
@@ -109,14 +127,15 @@ window.SMCStage = function (D) {
       if (!isFinite(c[0])) { const g = f ? proj(d3.geoCentroid(f)) : null; c = g || [W / 2, H / 2]; }
       return c;
     });
+    }
     const okIds = new Set(ok.map((m) => m.id));
-    layerGray = buildLayer((f) => (okIds.has(f.id) ? "#e2e1db" : "#f1f0ec"));
+    layerGray = buildLayer((f) => (okIds.has(f.id) ? "#e2e1db" : HATCH));
     layerType = null;
   }
   function computeTypeLayer() {
     layerType = buildLayer((f) => {
       const n = nodeById.get(f.id);
-      if (!n) return "#f1f0ec";
+      if (!n) return HATCH;
       const c = mix(PAPER, typeRGB[n.t], certLevel(n.conf));
       return `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
     });
@@ -131,14 +150,22 @@ window.SMCStage = function (D) {
 
   function computeDorling() {
     const F = frame();
-    const area = (F.x1 - F.x0) * (F.y1 - F.y0);
-    const r = Math.max(2.2, Math.min(5.2, Math.sqrt((area * 0.16) / (N * Math.PI))));
-    const sim = nodes.map((n, i) => ({ x: P.geo[i][0], y: P.geo[i][1], gx: P.geo[i][0], gy: P.geo[i][1] }));
-    const s = d3.forceSimulation(sim).randomSource(d3.randomLcg(7))
-      .force("x", d3.forceX((d) => d.gx).strength(0.09))
-      .force("y", d3.forceY((d) => d.gy).strength(0.09))
-      .force("c", d3.forceCollide(r + 0.55).iterations(2)).stop();
-    for (let k = 0; k < 240; k++) s.tick();
+    let r, sim;
+    const L = D.layouts;
+    if (L && L.dorling) {
+      // раскладка посчитана заранее (scripts/build_site_layouts.js) в единицах той же проекции: переносим линейно
+      const k = proj.scale() / L.scale, t = proj.translate(), tc = L.translate, at = new Map(L.ids.map((id, j) => [id, L.dorling.xy[j]]));
+      sim = nodes.map((n, i) => { const p = at.get(n.id); return p ? { x: (p[0] - tc[0]) * k + t[0], y: (p[1] - tc[1]) * k + t[1] } : { x: P.geo[i][0], y: P.geo[i][1] }; });
+      r = L.dorling.r * k;
+    } else {
+      const area = (F.x1 - F.x0) * (F.y1 - F.y0);
+      r = Math.max(2.2, Math.min(5.2, Math.sqrt((area * 0.16) / (N * Math.PI))));
+      sim = nodes.map((n, i) => ({ x: P.geo[i][0], y: P.geo[i][1], gx: P.geo[i][0], gy: P.geo[i][1] }));
+      const s = d3.forceSimulation(sim).randomSource(d3.randomLcg(7))
+        .force("x", d3.forceX((d) => d.gx).strength(0.09)).force("y", d3.forceY((d) => d.gy).strength(0.09))
+        .force("c", d3.forceCollide(r + 0.55).iterations(2)).stop();
+      for (let k = 0; k < 240; k++) s.tick();
+    }
     // вписываем результат в кадр
     const xs = d3.extent(sim, (d) => d.x), ys = d3.extent(sim, (d) => d.y);
     const sc = Math.min((F.x1 - F.x0) / (xs[1] - xs[0]), (F.y1 - F.y0) / (ys[1] - ys[0]), 1);
@@ -232,7 +259,7 @@ window.SMCStage = function (D) {
     geo:      { label: "01 · <b>География</b> · центры МО на контурах", count: () => `${fInt(N)} МО`, night: false, layer: "gray" },
     dorling:  { label: "02 · <b>Равновеликая карта</b> · каждое МО — одна точка", count: () => `${fInt(N)} точек одного размера`, night: false, layer: null },
     net:      { label: "03 · <b>Сеть синхронности трат</b>", count: () => `${fInt(N)} узлов · ${fInt(edges.length)} рёбер`, night: false, layer: null, edges: 1 },
-    netcolor: { label: "04 · <b>Сеть</b> · цвет — тип (KEFRiN)", count: () => `6 типов · модулярность ${f2(meta.final_icvi.MQ)}`, night: false, layer: null, edges: 0.7, legend: true },
+    netcolor: { label: "04 · <b>Сеть</b> · цвет — тип (KEFRiN), линии — связи внутри типа", count: () => `6 типов · модулярность ${f2(meta.final_icvi.MQ)}`, night: false, layer: null, edges: 0.7, legend: true },
     islands:  { label: "05 · <b>Типы</b> · центр — уверенные МО, кромка — пограничные", count: () => `6 типов · 4 макротипа`, night: false, layer: null, labels: true },
     time:     { label: "06 · <b>Время</b>", count: () => `значимо сменили тип: ${fInt(moved)}`, night: false, layer: null, labels: true, time: true },
     final:    { label: "07 · <b>Тип и уверенность</b>", count: () => `насыщенность — уверенность`, night: false, layer: "type", legend: true, vsup: true },
@@ -243,10 +270,11 @@ window.SMCStage = function (D) {
     const pos = state === "geo" || state === "final" || state === "hero" ? P.geo : state === "dorling" ? P.dorling
       : state === "net" || state === "netcolor" ? P.net : state === "islands" ? P.islands : P.time[w];
     const night = STATES[state].night;
-    const r = state === "geo" || state === "hero" ? 1.7 : state === "final" ? 1.4 : state === "dorling" ? P.rDorling : state === "islands" || state === "time" ? P.rIsl : 2.1;
+    const small = W < 700;
+    const r = state === "geo" || state === "hero" ? (small ? 1.3 : 1.7) : state === "final" ? 1.4 : state === "dorling" ? P.rDorling : state === "islands" || state === "time" ? P.rIsl : small ? 1.25 : 2.1;
     return nodes.map((n, i) => {
       let c = INK, a = 0.9, ring = 0, rr = r;
-      if (state === "hero") { const hl = STATES.hero.only.includes(n.t); c = hl ? typeRGB[n.t] : [150, 149, 144]; a = hl ? 0.95 : 0.55; rr = hl ? 2.3 : 1.5; }
+      if (state === "hero") { const hl = STATES.hero.only.includes(n.t); c = hl ? typeRGB[n.t] : [150, 149, 144]; a = hl ? 0.95 : 0.5; rr = hl ? (small ? 1.8 : 2.3) : (small ? 1.1 : 1.5); }
       else if (state === "net") { c = INK; a = 0.72; }
       else if (state === "netcolor") { c = typeRGB[n.t]; a = 0.92; }
       else if (state === "islands") { c = typeRGB[n.t]; a = 0.35 + 0.65 * certLevel(n.conf); }
@@ -303,7 +331,7 @@ window.SMCStage = function (D) {
     layerA = { gray: layerFrom.gray + (layerTo.gray - layerFrom.gray) * kg, type: layerFrom.type + (layerTo.type - layerFrom.type) * kg };
     edgeA = edgeFrom + (edgeTo - edgeFrom) * kg;
     draw();
-    if (g < 1) requestAnimationFrame(tick); else { anim = null; buildIndex(); }
+    if (g < 1) requestAnimationFrame(tick); else { anim = null; buildIndex(); if (cur) labels(cur); }
   }
 
   function draw() {
@@ -314,7 +342,8 @@ window.SMCStage = function (D) {
     ctx.globalAlpha = 1;
     if (edgeA > 0.01 && edges.length) {
       ctx.beginPath();
-      for (const [a, b] of edges) { const p = nodes[a], q = nodes[b]; ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); }
+      const same = cur === "netcolor";
+      for (const [a, b] of edges) { const p = nodes[a], q = nodes[b]; if (same && p.t !== q.t) continue; ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); }
       ctx.strokeStyle = `rgba(17,17,16,${0.045 * edgeA})`; ctx.lineWidth = 0.5; ctx.stroke();
     }
     for (const n of nodes) {
@@ -348,7 +377,7 @@ window.SMCStage = function (D) {
 
   function labels(state) {
     const el = document.getElementById("stage-labels");
-    el.classList.toggle("show", state === "islands" || state === "time");
+    el.classList.toggle("show", (state === "islands" || state === "time") && !anim);
     el.classList.toggle("geo", state === "geo");
     if (!islandCenters.length) return;
     const spend = (t) => t.spend ? `${fInt(t.spend)} ₽/мес · ` : "";
@@ -357,7 +386,10 @@ window.SMCStage = function (D) {
       const n = state === "time" ? ok.filter((m) => m.types[win] === t.id).length : byTypeN[t.id];
       const R = state === "time" && P.timeR ? Math.max(c.R, P.timeR[win][t.id] || 0) : c.R;
       return `<div class="il" style="left:${c.x}px;top:${c.y + R + 6}px"><b>${t.short || t.name}</b><span>${spend(t)}${fInt(n)} МО</span></div>`;
-    }).join("") + (P.groups || []).map((g) => `<div class="ml" style="left:${g.x}px;top:${g.y}px">${g.name}</div>`).join("");
+    }).join("") + (P.groups || []).map((g) => `<div class="ml" style="left:${g.x}px;top:${g.y}px">${g.name}</div>`).join("")
+      + (proj && W >= 700 ? [[37.6, 55.75, "Москва"], [30.3, 59.94, "Петербург"], [82.9, 55.0, "Новосибирск"], [129.7, 62.0, "Якутск"], [131.9, 43.1, "Владивосток"], [33.1, 68.97, "Мурманск"]]
+        .map(([lo, la, s]) => { const p = proj([lo, la]); return p ? `<div class="city" style="left:${p[0]}px;top:${p[1]}px">${s}</div>` : ""; }).join("") : "");
+    el.classList.toggle("cities", state === "hero" || state === "final" || state === "geo");
   }
 
   /* ---------- наведение и выбор ---------- */
@@ -379,6 +411,7 @@ window.SMCStage = function (D) {
     tipEl.style.left = tx + "px"; tipEl.style.top = ty + "px";
   });
   canvas.addEventListener("mouseleave", () => { hover = null; tipEl.hidden = true; draw(); });
+  window.addEventListener("scroll", () => { if (!tipEl.hidden) { tipEl.hidden = true; hover = null; draw(); } }, { passive: true });
   canvas.addEventListener("click", () => { if (hover) window.dispatchEvent(new CustomEvent("smc:select", { detail: hover.id })); });
 
   /* ---------- время ---------- */
@@ -395,6 +428,22 @@ window.SMCStage = function (D) {
   range.addEventListener("input", () => { stop(); setWin(+range.value, 700); });
   tLab.textContent = winLabel(W_END[0]);
 
+  /* ---------- первый экран: столичные и Арктика, затем по очереди остальные типы ---------- */
+  const HERO_SEQ = [[3, 2], [3], [2], [0], [4], [1], [5]];
+  let heroT = null, heroI = 0;
+  function heroCycle(on) {
+    clearInterval(heroT); heroT = null;
+    if (!on || reduce) return;
+    heroT = setInterval(() => {
+      if (cur !== "hero" || anim) return;
+      heroI = (heroI + 1) % HERO_SEQ.length;
+      STATES.hero.only = HERO_SEQ[heroI];
+      const ts = STATES.hero.only.map((t) => types[t]);
+      STATES.hero.label = ts.length > 1 ? "00 · <b>Столичные и Арктика</b> — цветом" : `00 · <b>${ts[0].name}</b> · ${fInt(byTypeN[ts[0].id])} МО`;
+      go("hero", 0, 900);
+    }, 3200);
+  }
+
   /* ---------- прокрутка ---------- */
   const steps = [...document.querySelectorAll("#steps .step")];
   function activate(step) {
@@ -403,6 +452,7 @@ window.SMCStage = function (D) {
     const st = step.dataset.state;
     if (st === cur) return;
     cur = st;
+    heroCycle(st === "hero");
     if (st === "time") { setWin(0, 0); go("time", 0); if (!reduce) setTimeout(() => { if (cur === "time" && !timer) play(); }, 1700); }
     else { stop(); go(st); }
   }
@@ -447,6 +497,7 @@ window.SMCStage = function (D) {
     layerA = { gray: 0.6, type: 0 };
     cur = "hero";
     go("hero", 0, reduce ? 1 : 900);
+    heroCycle(true);
     const poster = document.getElementById("stage-poster");
     if (poster) { poster.classList.add("gone"); setTimeout(() => poster.remove(), 900); }
     // сеть (t-SNE) догружается в фоне: к шагу 03 она уже на месте

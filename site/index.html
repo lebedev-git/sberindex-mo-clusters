@@ -13,7 +13,7 @@
   <meta property="og:url" content="https://lebedev-git.github.io/sberindex-mo-clusters/">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0b0b'/%3E%3Ccircle cx='10' cy='11' r='4' fill='%23e34948'/%3E%3Ccircle cx='22' cy='10' r='4' fill='%231baf7a'/%3E%3Ccircle cx='11' cy='22' r='4' fill='%232a78d6'/%3E%3Ccircle cx='22' cy='22' r='4' fill='%23eda100'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=20261010b">
+  <link rel="stylesheet" href="styles.css?v=20261010d">
 </head>
 <body>
 <div class="viz-root">
@@ -152,7 +152,7 @@
       </div>
       <div class="map-wrap"><svg id="map-svg" role="img" aria-label="Карта муниципалитетов России"></svg></div>
       <div class="legend" id="legend"></div>
-      <p class="note" id="map-note">Щёлкните тип в легенде, чтобы оставить на карте только его. Колёсико — масштаб, перетаскивание — сдвиг, щелчок по МО — карточка с соседями по сети.</p>
+      <p class="note" id="map-note">Щёлкните тип в легенде, чтобы оставить на карте только его. <span class="hint-fine">Колёсико — масштаб, перетаскивание — сдвиг, щелчок по МО — карточка с соседями по сети.</span><span class="hint-touch">Двумя пальцами — масштаб, касание МО — карточка с соседями по сети.</span></p>
     </div>
     <aside class="card panel" id="panel" aria-live="polite">
       <p class="muted">Выберите муниципалитет на карте или через поиск.</p>
@@ -272,8 +272,8 @@
 <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
 </div>
 <script src="vendor/d3.min.js"></script>
-<script src="stage.js?v=20261010b"></script>
-<script src="app.js?v=20261010b"></script>
-<script src="v2.js?v=20261010b"></script>
+<script src="stage.js?v=20261010d"></script>
+<script src="app.js?v=20261010g"></script>
+<script src="v2.js?v=20261010d"></script>
 </body>
 </html>

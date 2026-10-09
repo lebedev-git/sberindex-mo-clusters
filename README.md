@@ -43,8 +43,8 @@ python -m http.server 8000 --directory site          # лендинг: http://lo
 ```
 
 `run.py --fast` пропускает бутстреп устойчивости (≈3 мин вместо ≈13 мин); правило выбора проверяется только в полном режиме.
-`python scripts/us_check.py` — проверка на данных США. `python scripts/anchor_check.py` — почему окна динамики стартуют от основной типологии. Самотест индексов: `python src/smc/metrics.py`.
-`python scripts/check_claims.py` — реестр утверждений: 43 числа и сравнения из отчёта, README и лендинга пересчитываются
+`python scripts/us_check.py` — проверка на данных США. `python scripts/anchor_check.py` — почему окна динамики стартуют от основной типологии. `python scripts/cash_check.py` — проверка гипотезы о маркетплейсах внешними данными о доле безнала. Самотест индексов: `python src/smc/metrics.py`.
+`python scripts/check_claims.py` — реестр утверждений: 44 числа и сравнения из отчёта, README и лендинга пересчитываются
 по `results/` и `site/data/`, плюс запрет на формулировки, которые раньше оказывались неверными. Python 3.12.
 
 Лендинг публикуется на GitHub Pages через `.github/workflows/pages.yml` (один раз: Settings → Pages → Source: GitHub Actions).
@@ -70,6 +70,7 @@ scripts/download_data.py  скачивание и проверка исходн�
 scripts/us_check.py       проверка на США (Opportunity Insights + USDA ERS)
 scripts/check_claims.py   реестр утверждений: тексты против рассчитанных результатов
 scripts/anchor_check.py   якорный старт окон против цепочки (обоснование метода динамики)
+scripts/cash_check.py     гипотеза о маркетплейсах против доли безнала по регионам (Сбербанк + «Платформа ОФД», 2025)
 data/external/            официальные российские метки МО (Росстат 2024 и др.) с описанием источников
 results/                  таблицы всех сравнений и итогов (CSV/JSON)
 site/                     статический лендинг (D3 v7, без сервера и внешних CDN)

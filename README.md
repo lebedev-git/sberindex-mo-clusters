@@ -49,6 +49,7 @@ python -m http.server 8000 --directory site          # лендинг: http://lo
 
 `run.py --fast` пропускает бутстреп устойчивости (≈3 мин вместо ≈13 мин); правило выбора проверяется только в полном режиме.
 Дополнительные проверки (их результаты уже в `results/`, а сводка — в `site/data/v2.json`): `python scripts/download_data.py --only rosstat` — выборка БД ПМО Росстата для внешней проверки; `python scripts/synthetic_check.py` — синтетическая сеть с известными группами; `python scripts/gmm_check.py` — смесь гауссиан как дополнительный метод; `python scripts/mobility_check.py` — индекс мобильности (СЗФО).
+`node scripts/build_site_layouts.js` — раскладки точек для лендинга (`site/data/layouts.json`: равновеликая карта и карта по населению); запускать после `run.py`, если менялись данные (Node.js и вендорный D3 из `site/vendor/`).
 `python scripts/us_check.py` — проверка на данных США. `python scripts/anchor_check.py` — почему окна динамики стартуют от основной типологии. `python scripts/cash_check.py` — проверка гипотезы о маркетплейсах внешними данными о доле безнала. Самотест индексов: `python src/smc/metrics.py`.
 `python scripts/check_claims.py` — реестр утверждений: 70 чисел и сравнений из отчёта, README и лендинга пересчитываются
 по `results/` и `site/data/`, плюс запрет на формулировки, которые раньше оказывались неверными. Python 3.12.
@@ -87,6 +88,7 @@ scripts/cash_check.py     гипотеза о маркетплейсах про�
 scripts/synthetic_check.py  синтетика: атрибутированная блочная модель с известными группами
 scripts/gmm_check.py      смесь гауссиан как дополнительный метод (вне голосования)
 scripts/mobility_check.py индекс мобильности СберИндекса (СЗФО) против типов
+scripts/build_site_layouts.js  раскладки точек для лендинга (Node.js, D3 из site/vendor)
 data/external/            официальные российские метки МО (Росстат 2024 и др.) с описанием источников
 results/                  таблицы всех сравнений и итогов (CSV/JSON)
 site/                     статический лендинг (D3 v7, без сервера и внешних CDN): stage.js — сцена истории (Canvas),

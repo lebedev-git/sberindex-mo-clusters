@@ -179,8 +179,12 @@ def main() -> None:
     macro_lab = labels[(fm, mk)]
     nest = pd.crosstab(main_lab, macro_lab)
     nestedness = float(nest.max(axis=1).sum() / n)
-    log(f"выбор по правилу: детальный {rule_detailed}, макро {tuple(map(str, rule_macro))}; конфиг: {fm} k={fk}/{mk}; "
-        f"совпадает: {selection['match']}; вложенность уровней {nestedness:.3f}")
+    if args.fast:
+        log(f"быстрый режим: без бутстрепа устойчивость не голосует, правило выбора не проверяется (selection.json: valid=false); "
+            f"используется итоговая конфигурация {fm} k={fk}/{mk}; вложенность уровней {nestedness:.3f}")
+    else:
+        log(f"выбор по правилу: детальный {rule_detailed}, макро {tuple(map(str, rule_macro))}; конфиг: {fm} k={fk}/{mk}; "
+            f"совпадает: {selection['match']}; вложенность уровней {nestedness:.3f}")
     final_icvi = M.icvi(X, A_net, main_lab)
     base = M.permutation_baseline(X, A_net, main_lab, cl["permutation_reps"], seed)
     # z ориентирован по направлению индекса: > 0 — итог лучше случайного разбиения

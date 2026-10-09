@@ -1,6 +1,6 @@
 """Внутренние индексы качества кластеризации (ICVI), устойчивость и внешняя проверка.
 
-Определения графовых индексов — по статье членов жюри: Shalileh, Antonov, Tsyplakova,
+Определения графовых индексов — по статье Shalileh, Antonov, Tsyplakova,
 Doklady Mathematics 112(3):553–564 (2025), формулы (18)–(22), https://doi.org/10.1134/S1064562425700589
 (AVI/AVU восходят к Biswas & Biswas, ESWA 2017).
 
@@ -132,7 +132,7 @@ def eta_squared(values: np.ndarray, lab: np.ndarray) -> float:
 
 
 def _selftest() -> None:
-    """Аналитический случай из статьи жюри: две несвязные клики -> AVI = 1, AVU = 0, Q = 0.5."""
+    """Аналитический случай из статьи Shalileh и др. (2025): две несвязные клики -> AVI = 1, AVU = 0, Q = 0.5."""
     B = np.ones((4, 4)) - np.eye(4)
     A = sp.csr_matrix(np.block([[B, np.zeros((4, 4))], [np.zeros((4, 4)), B]]))
     r = graph_indices(A, np.array([0] * 4 + [1] * 4))

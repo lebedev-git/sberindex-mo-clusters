@@ -1,0 +1,6 @@
+rule,grades,rule_name,macro_winners,detailed,ties,final_rank,final_is_winner,final_unique_winner
+copeland,,Коупленд,kefrin k=4,kefrin k=6,1,1,True,True
+borda,,Борда,kefrin k=4,kefrin k=6,1,1,True,True
+schulze,,Шульце,kefrin k=4; spectral k=6,kefrin k=6; spectral k=6,2,1,True,False
+threshold,3.0,Пороговое (m = 3),spectral k=5; spectral k=6; kefrin k=6; spectral k=8; kefrin k=8,spectral k=6; spectral k=6; kefrin k=6; spectral k=6; kefrin k=6,5,11,False,False
+threshold,5.0,Пороговое (m = 5),kefrin k=9,kefrin k=6,1,17,False,False

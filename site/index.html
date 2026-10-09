@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Типы локальных экономик России — по тратам жителей</title>
   <meta name="description" content="Динамическая атрибутированная сеть 2016 муниципалитетов России по безналичным расходам жителей (СберИндекс, 2023–2024): типы локальных экономик, их география и изменения.">
-  <meta name="theme-color" content="#f9f9f7">
+  <meta name="theme-color" content="#ffffff">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Типы локальных экономик России — по тратам жителей">
   <meta property="og:description" content="2 016 муниципалитетов, 4 макротипа и 6 типов по безналичным тратам жителей (СберИндекс, 2023–2024): карта, динамика, метод, проверка официальными данными.">
@@ -13,36 +13,99 @@
   <meta property="og:url" content="https://lebedev-git.github.io/sberindex-mo-clusters/">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0b0b'/%3E%3Ccircle cx='10' cy='11' r='4' fill='%23e34948'/%3E%3Ccircle cx='22' cy='10' r='4' fill='%231baf7a'/%3E%3Ccircle cx='11' cy='22' r='4' fill='%232a78d6'/%3E%3Ccircle cx='22' cy='22' r='4' fill='%23eda100'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=20261009s">
+  <link rel="preload" href="vendor/fonts/GolosText-400-700-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css?v=20261009x">
 </head>
 <body>
 <div class="viz-root">
 
-<header class="hero">
-  <h1>Типы локальных экономик России</h1>
-  <p class="lede">Какие экономики на самом деле живут в 2&nbsp;016 муниципалитетах страны — по тому, сколько и на что тратят жители.
-    Каждый муниципалитет — узел сети со своим профилем трат; рёбра связывают тех, чьи траты колеблются синхронно.
-    Типы найдены методом KEFRiN для сетей с признаками и прослежены помесячно по скользящим годовым окнам.</p>
-  <p class="byline">Решение трека «Кластеризация» онлайн-конкурса СберИндекса 2026 · Андрей Лебедев · данные СберИндекса за январь 2023 — декабрь 2024</p>
-  <div class="tiles" id="tiles"></div>
+<header class="mast">
+  <a class="brand" href="#top" aria-label="В начало"><i aria-hidden="true"><b style="background:#e34948"></b><b style="background:#1baf7a"></b><b style="background:#4a3aa7"></b><b style="background:#eb6834"></b><b style="background:#2a78d6"></b><b style="background:#eda100"></b></i>Типы локальных экономик <span>2023–2024</span></a>
+  <nav class="toc" aria-label="Разделы">
+    <a href="#story">История</a><a href="#map">Карта</a><a href="#types">Типы</a><a href="#dynamics">Динамика</a><a href="#method">Метод</a><a href="#calibration">Проверка</a><a href="#use">Применение</a><a href="#data">Данные</a>
+  </nav>
   <p class="links" id="links"></p>
 </header>
 
-<nav class="toc" aria-label="Разделы">
-  <a href="#map">Карта</a><a href="#types">Типы</a><a href="#dynamics">Динамика</a><a href="#method">Метод</a><a href="#calibration">Проверка</a><a href="#use">Применение</a><a href="#data">Данные</a>
-</nav>
+<section class="story" id="story" aria-label="История в шести шагах">
+  <div class="story-steps" id="steps">
+    <div class="step hero on" data-state="geo" id="top"><div class="inner">
+      <p class="eyebrow">СберИндекс · трек «Кластеризация» · 2023–2024</p>
+      <h1>Шесть экономик одной страны</h1>
+      <p class="lede">2&nbsp;016 муниципалитетов, 24&nbsp;месяца безналичных трат жителей, одна сеть. Какие типы локальных экономик в ней видны, где проходят их границы и что изменилось за год.</p>
+      <div class="tiles" id="tiles"></div>
+      <p class="byline">Андрей Лебедев · данные СберИндекса, Росстата · прокрутите вниз ↓</p>
+    </div></div>
+    <div class="step" data-state="geo"><div class="inner">
+      <p class="eyebrow">01 · Страна</p>
+      <h2>Карта преувеличивает пустые места</h2>
+      <p id="s-geo"></p>
+    </div></div>
+    <div class="step" data-state="dorling"><div class="inner">
+      <p class="eyebrow">02 · Равные голоса</p>
+      <h2>Каждый муниципалитет — одна точка</h2>
+      <p id="s-dorling"></p>
+    </div></div>
+    <div class="step" data-state="net"><div class="inner">
+      <p class="eyebrow">03 · Сеть</p>
+      <h2>Соседи по тратам — не соседи по карте</h2>
+      <p id="s-net"></p>
+    </div></div>
+    <div class="step" data-state="netcolor"><div class="inner">
+      <p class="eyebrow">04 · Типы в сети</p>
+      <h2>Типы — это области сети</h2>
+      <p id="s-netcolor"></p>
+    </div></div>
+    <div class="step" data-state="islands"><div class="inner">
+      <p class="eyebrow">05 · Шесть типов</p>
+      <h2>Шесть укладов, четыре макротипа</h2>
+      <p id="s-islands"></p>
+    </div></div>
+    <div class="step" data-state="time"><div class="inner">
+      <p class="eyebrow">06 · Время</p>
+      <h2>Что изменилось за год</h2>
+      <p id="s-time"></p>
+    </div></div>
+    <div class="step" data-state="final"><div class="inner">
+      <p class="eyebrow">07 · Итог</p>
+      <h2>Карта типов, честная к&nbsp;неопределённости</h2>
+      <p id="s-final"></p>
+    </div></div>
+    <div class="step" data-state="final"><div class="inner">
+      <p class="eyebrow">08 · Выводы</p>
+      <h2>Что видно в тратах</h2>
+      <ol class="findings" id="s-findings"></ol>
+      <div class="btn-row"><a class="cta" href="#map">Найти свой муниципалитет</a><a class="cta ghost" href="#method">Как это посчитано</a></div>
+    </div></div>
+  </div>
+  <div class="story-stage" id="stage" aria-hidden="true">
+    <canvas id="stage-canvas"></canvas>
+    <div class="stage-labels" id="stage-labels"></div>
+    <div class="hud"><div class="state" id="stage-state"></div><div class="count" id="stage-count"></div></div>
+    <div class="stage-time" id="stage-time"><button type="button" id="stage-play" aria-label="Проиграть окна">▶</button><input type="range" id="stage-range" min="0" max="12" value="0" aria-label="Окно"><span class="t" id="stage-t"></span></div>
+    <div class="stage-legend" id="stage-legend"></div>
+    <nav class="stage-nav" id="stage-nav" aria-label="Шаги истории"></nav>
+    <div class="stage-tip" id="stage-tip" hidden></div>
+  </div>
+</section>
 
-<section id="map" class="section" style="padding-top:0">
+<div class="explorer-head" id="explore">
+  <div><span class="kicker">Исследование</span><h2>Найдите свой муниципалитет</h2></div>
+  <p class="sub" style="margin:0;max-width:52ch">Карта всех 2&nbsp;016 МО с фильтрами, 13 временными срезами и карточкой каждого МО: тип, траты, соседи по сети, динамика.</p>
+</div>
+
+<section id="map" class="section" style="padding-top:8px">
   <div class="filters" role="group" aria-label="Фильтры">
     <label class="f">Уровень
       <select id="f-level"><option value="types">6 типов</option><option value="macro">4 макротипа</option></select>
     </label>
-    <label class="f w">Период
-      <select id="f-period"></select>
-    </label>
+    <div class="f w period-f"><label for="f-period">Период</label>
+      <div class="row"><button type="button" class="btn play" id="f-play" aria-pressed="false" aria-label="Проиграть 13 окон">▶</button><select id="f-period"></select></div>
+    </div>
     <label class="f w">Цвет карты
       <select id="f-mode">
         <option value="type">Тип экономики</option>
+        <option value="typeconf">Тип с учётом уверенности</option>
         <option value="moved">Значимо сменили тип 2023→2024</option>
         <option value="growth">Рост трат 2024/2023 относительно страны</option>
         <option value="dmp">Сдвиг доли маркетплейсов 2024/2023</option>
@@ -75,6 +138,10 @@
           <p class="sub" id="map-sub"></p>
         </div>
         <div class="tools">
+          <div class="seg" role="group" aria-label="Геометрия карты">
+            <button type="button" id="geom-area" aria-pressed="true">Территория</button>
+            <button type="button" id="geom-dots" aria-pressed="false" title="Каждое МО — круг одного размера: площадь не искажает вес территорий">Равные точки</button>
+          </div>
           <div class="seg" role="group" aria-label="Масштаб">
             <button type="button" id="zoom-msk" aria-pressed="false">Москва</button>
             <button type="button" id="zoom-spb" aria-pressed="false">Петербург</button>
@@ -93,6 +160,7 @@
 </section>
 
 <section id="types" class="section">
+  <span class="kicker">02 · Типы</span>
   <h2>Четыре макротипа и шесть типов локальных экономик</h2>
   <p class="sub">Типология двухуровневая: 4 макротипа (самое устойчивое разбиение, ARI на подвыборках ≈ 0,97) и 6 типов внутри них. Медианы за 2023–2024 гг.; доли — от всех безналичных трат. Полоса над макротипом — из каких типов он состоит.</p>
   <div class="macro-row" id="macro-row"></div>
@@ -102,10 +170,11 @@
 </section>
 
 <section id="dynamics" class="section">
+  <span class="kicker">03 · Динамика</span>
   <h2>Как типы менялись: 2023 → 2024</h2>
   <p class="sub" id="dyn-sub">Сравниваются годовые окна янв–дек 2023 и янв–дек 2024: они не пересекаются по месяцам, а сезонность внутри года одинакова, поэтому она не выдаёт себя за перемены. <b>Значимый переход</b> — МО уверенно принадлежит одному типу в 2023 и уверенно другому в 2024 (запас до границы соседнего типа не меньше порога τ). Остальные смены типа — колебания на границе.</p>
   <div class="card"><h3>Потоки между типами: 2023 → 2024</h3><p class="sub">Слева — тип МО в 2023 году, справа — в 2024. Ширина ленты — число МО. Яркие ленты — значимые переходы, бледные — колебания на границе; горизонтальные полосы — МО, сохранившие тип.</p><div id="alluvial"></div></div>
-  <div class="dyn-layout">
+  <div class="dyn-layout wide-left">
     <div class="card"><h3>Матрица переходов</h3><p class="sub">Строки — тип в 2023, столбцы — в 2024. Крупное число — все МО, в скобках — значимые переходы.</p><div id="trans"></div><div id="tau-sens"></div></div>
     <div class="card"><h3>Куда двигались муниципалитеты</h3><div id="flows"></div></div>
   </div>
@@ -113,9 +182,11 @@
     <div class="card"><h3>Качество разбиения по окнам</h3><p class="sub">Каждая точка — годовое окно, своя сеть и своё разбиение.</p><div class="mini-charts stack" id="win-charts"></div></div>
     <div class="card"><h3>Траты по типам, медиана, ₽ на жителя в месяц</h3><div id="type-series"></div></div>
   </div>
+  <div class="v2-grid" id="v2-dyn"></div>
 </section>
 
 <section id="method" class="section">
+  <span class="kicker">04 · Метод</span>
   <h2>Метод</h2>
   <div class="card intro">
     <div>
@@ -147,9 +218,11 @@
   </div>
   <div class="card"><h3>Итоговое разбиение против случайного</h3><p class="sub">Те же размеры типов, метки перемешаны случайно (50 повторов). z — на сколько стандартных отклонений итог лучше случайного.</p><div class="split" id="final-icvi"></div></div>
   <div class="card"><h3>Когда какой метод уместен</h3><div id="methods-when"></div></div>
+  <div class="v2-grid" id="v2-method"></div>
 </section>
 
 <section id="calibration" class="section">
+  <span class="kicker">05 · Проверка</span>
   <h2>Проверка внешними данными и международный опыт</h2>
   <p class="sub">Ни одна из характеристик ниже не входила в модель. Если типы с ними связаны, они описывают реальные различия территорий, а не шум.</p>
   <div class="dyn-layout">
@@ -162,9 +235,11 @@
       <div class="card prose" id="intl"></div>
     </div>
   </div>
+  <div class="v2-grid" id="v2-cal" style="margin-top:var(--gap)"></div>
 </section>
 
 <section id="use" class="section">
+  <span class="kicker">06 · Применение</span>
   <h2>Как использовать</h2>
   <p class="sub">Три разобранных примера на реальных муниципалитетах; кнопка открывает МО на карте вместе с его соседями по сети.</p>
   <div class="use-grid" id="cases"></div>
@@ -175,18 +250,21 @@
 </section>
 
 <section id="data" class="section">
+  <span class="kicker">07 · Данные</span>
   <h2>Данные, ограничения, воспроизведение</h2>
   <div class="card prose" id="data-notes"></div>
 </section>
 
 <footer class="foot">
   <p>Данные: «Потребительские безналичные расходы на уровне муниципальных образований по категориям трат», «Индекс доступности рынков», «Транспортные связи между МО» — СберИндекс, CC BY-SA 4.0. Границы МО — справочник муниципальных образований СберИндекса.</p>
-  <p>Контуры ДНР, ЛНР, Запорожской и Херсонской областей (в справочнике МО их нет) — © участники OpenStreetMap и geoBoundaries, ODbL. Код — MIT, D3 — ISC.</p>
+  <p>Контуры ДНР, ЛНР, Запорожской и Херсонской областей (в справочнике МО их нет) — © участники OpenStreetMap и geoBoundaries, ODbL. Код — MIT, D3 — ISC, шрифты Golos Text и JetBrains Mono — SIL OFL 1.1.</p>
 </footer>
 
 <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
 </div>
 <script src="vendor/d3.min.js"></script>
-<script src="app.js?v=20261009v"></script>
+<script src="stage.js?v=20261009x"></script>
+<script src="app.js?v=20261009x"></script>
+<script src="v2.js?v=20261009x"></script>
 </body>
 </html>

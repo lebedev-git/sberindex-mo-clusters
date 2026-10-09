@@ -1,0 +1,11 @@
+{
+  "method": "t-SNE по [Y, sqrt(rho) P]",
+  "edges_total": 25176,
+  "edges_exported": 20000,
+  "edge_same_type_share": 0.60655,
+  "knn10_same_type_share": 0.8313988095238095,
+  "trustworthiness_10": 0.9733307496538564,
+  "perplexity": 30,
+  "pca_dims": 50,
+  "seed": 42
+}

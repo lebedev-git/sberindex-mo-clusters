@@ -1,6 +1,6 @@
 /* Лендинг «Типы локальных экономик России». Чистый D3 v7, данные — site/data/*.json. */
 (async function () {
-  const DATA_VERSION = "20261009v"; // меняется при пересборке данных, чтобы браузер не брал старые из кэша
+  const DATA_VERSION = "20261009w"; // меняется при пересборке данных, чтобы браузер не брал старые из кэша
   const ru = d3.formatLocale({ decimal: ",", thousands: " ", grouping: [3], currency: ["", " ₽"] });
   const fInt = ru.format(",.0f"), fPct = ru.format(".1%"), f2 = ru.format(".2f"), f3 = ru.format(".3f"), fPct0 = ru.format(".0%");
   const MON = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
@@ -29,6 +29,7 @@
   });
   fixRings(geo.features);
   if (extra) fixRings(extra.features);
+  if (window.SMCStage) { try { window.SMCStage({ geo, mo, types, macro, meta, version: DATA_VERSION }); } catch (e) { console.error(e); } }
   const byId = new Map(mo.map((m) => [m.id, m]));
   const ok = mo.filter((m) => m.status === "ok");
   const cur = () => (state.level === "macro" ? macro : types);
@@ -60,12 +61,19 @@
   ];
   d3.select("#tiles").selectAll("div").data(tiles).join("div").attr("class", "tile").html((d) => `<div class="v">${d[0]}</div><div class="l">${d[1]}</div>`);
   const gh = location.hostname.endsWith("github.io") ? `https://github.com/${location.hostname.split(".")[0]}/${location.pathname.split("/")[1]}` : null;
-  d3.select("#links").html([gh ? `<a href="${gh}">Репозиторий с кодом</a>` : null, `<a href="report.pdf">Методологический отчёт (PDF)</a>`,
-    `<a href="data/typology.csv" download>Типология всех МО (CSV)</a>`].filter(Boolean).join(""));
+  d3.select("#links").html([gh ? `<a href="${gh}">Код<span>&nbsp;на GitHub</span></a>` : null, `<a href="report.pdf">Отчёт<span>&nbsp;PDF</span></a>`,
+    `<a href="data/typology.csv" download>Типология<span>&nbsp;CSV</span></a>`].filter(Boolean).join(""));
+
+  // подсветка текущего раздела в мачте
+  const tocLinks = [...document.querySelectorAll(".toc a")];
+  const secObs = new IntersectionObserver((es) => es.forEach((e) => {
+    if (e.isIntersecting) tocLinks.forEach((l) => l.classList.toggle("on", l.getAttribute("href") === "#" + e.target.id));
+  }), { rootMargin: "-40% 0px -55% 0px" });
+  tocLinks.forEach((l) => { const t = document.querySelector(l.getAttribute("href")); if (t) secObs.observe(t); });
 
   /* ---------- фильтры ---------- */
   const per = d3.select("#f-period");
-  per.append("option").attr("value", "main").text("Весь период 2023–2024");
+  per.append("option").attr("value", "main").text("Весь период");
   W.forEach((e, i) => per.append("option").attr("value", i).text("Окно: " + winLabel(e)));
   const regions = [...new Set(mo.map((m) => m.region))].sort((a, b) => a.localeCompare(b, "ru"));
   d3.select("#f-region").selectAll("option.r").data(regions).join("option").attr("class", "r").attr("value", (d) => d).text((d) => d);
@@ -94,7 +102,22 @@
   const geoLayer = g.append("g");
   const paths = geoLayer.selectAll("path").data(geo.features).join("path").attr("class", "mo").attr("d", path);
   const featById = new Map(geo.features.map((f) => [f.id, f]));
-  const centerOf = (id) => path.centroid(featById.get(id));
+  // равновеликая точечная карта: каждое МО — круг одного размера рядом со своим центром (силы столкновений)
+  const dotLayer = g.append("g").attr("class", "dot-layer").style("display", "none");
+  const DOT_R = 3.1, dotPos = new Map();
+  let dots = null;
+  function buildDots() {
+    const nodes = mo.filter((m) => m.status === "ok" && featById.get(m.id)).map((m) => { const c = path.centroid(featById.get(m.id)); return { m, f: featById.get(m.id), x: c[0], y: c[1], gx: c[0], gy: c[1] }; }).filter((d) => isFinite(d.x));
+    const sim = d3.forceSimulation(nodes).randomSource(d3.randomLcg(7))
+      .force("x", d3.forceX((d) => d.gx).strength(0.09)).force("y", d3.forceY((d) => d.gy).strength(0.09))
+      .force("c", d3.forceCollide(DOT_R + 0.45).iterations(2)).stop();
+    for (let k = 0; k < 220; k++) sim.tick();
+    nodes.forEach((d) => dotPos.set(d.m.id, [d.x, d.y]));
+    dots = dotLayer.selectAll("circle").data(nodes).join("circle").attr("class", "mo dot").attr("cx", (d) => d.x).attr("cy", (d) => d.y)
+      .attr("r", DOT_R / d3.zoomTransform(svg.node()).k ** 0.5);
+    dots.on("mousemove", (ev, d) => paths.on("mousemove").call(null, ev, d.f)).on("mouseleave", hideTip).on("click", (ev, d) => paths.on("click").call(null, ev, d.f));
+  }
+  const centerOf = (id) => (state.geom === "dots" && dotPos.get(id)) || path.centroid(featById.get(id));
   const linkLayer = g.append("g").attr("class", "links-layer").style("pointer-events", "none");
   function drawLinks() {
     linkLayer.selectAll("*").remove();
@@ -114,6 +137,7 @@
   const zoom = d3.zoom().scaleExtent([1, 60]).on("zoom", (e) => {
     g.attr("transform", e.transform);
     g.selectAll(".links-layer circle").attr("r", function () { return +this.dataset.r / e.transform.k; });
+    if (dots) dots.attr("r", DOT_R / e.transform.k ** 0.5);
   });
   svg.call(zoom).on("dblclick.zoom", null);
   const zoomTo = (feats, maxK = 60) => {
@@ -125,6 +149,18 @@
   d3.select("#reset-zoom").on("click", () => svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity));
   const zoomRegion = (r) => zoomTo(geo.features.filter((f) => byId.get(f.id) && byId.get(f.id).region === r));
   d3.select("#zoom-msk").on("click", () => zoomRegion("Москва"));
+  const setGeom = (gm) => {
+    state.geom = gm;
+    if (gm === "dots" && !dots) buildDots();
+    geoLayer.style("display", gm === "dots" ? "none" : null);
+    extraLayer.style("display", gm === "dots" ? "none" : null);
+    dotLayer.style("display", gm === "dots" ? null : "none");
+    d3.select("#geom-area").attr("aria-pressed", gm !== "dots");
+    d3.select("#geom-dots").attr("aria-pressed", gm === "dots");
+    paint();
+  };
+  d3.select("#geom-area").on("click", () => setGeom("area"));
+  d3.select("#geom-dots").on("click", () => setGeom("dots"));
   d3.select("#zoom-spb").on("click", () => zoomRegion("Санкт-Петербург"));
 
   const metricOf = {
@@ -151,10 +187,13 @@
     if (!m) return C.absent;
     if (m.status !== "ok") return m.status === "incomplete" ? C.nodata : C.absent;
     if (state.mode === "type") return tColor(typeOf(m));
+    if (state.mode === "typeconf") return d3.interpolateRgb(C.absent, tColor(typeOf(m)))(certLevel(m));
     if (state.mode === "moved") return m.moved ? dColor(m.types[W.length - 1]) : C.other;
     const v = metricOf[state.mode](m);
     return v == null ? C.nodata : seq(v);
   }
+  // уверенность принадлежности → насыщенность (палитра с подавлением значения, 4 ступени)
+  const certLevel = (m) => { const c = m.conf ? (m.conf[0] + m.conf[1]) / 2 : 0; return c >= 0.25 ? 1 : c >= 0.15 ? 0.72 : c >= 0.05 ? 0.46 : 0.24; };
   function dimmed(f) {
     const m = byId.get(f.id);
     if (!m) return state.region !== "" || state.isolate != null;
@@ -165,12 +204,13 @@
   }
   function paint() {
     paths.attr("fill", fill).classed("dim", dimmed).classed("sel", (f) => f.id === state.sel);
+    if (dots) dots.attr("fill", (d) => fill(d.f)).classed("dim", (d) => dimmed(d.f)).classed("sel", (d) => d.m.id === state.sel);
     paths.filter((f) => f.id === state.sel).raise();
     extraLayer.selectAll("path").classed("dim", state.region !== "" || state.isolate != null);
     linkLayer.raise();
     drawLinks();
     renderLegend();
-    const titles = { type: "Типы экономики", moved: "Значимо сменили тип 2023→2024 (цвет — тип в 2024)" };
+    const titles = { type: "Типы экономики", typeconf: "Типы экономики с учётом уверенности", moved: "Значимо сменили тип 2023→2024 (цвет — тип в 2024)" };
     d3.select("#map-title").text(titles[state.mode] || d3.select(`#f-mode option[value=${state.mode}]`).text());
     d3.select("#map-sub").text((state.level === "macro" ? "4 макротипа · " : "6 типов · ") + (state.level === "macro" || state.period === "main" ? "весь период 2023–2024" : "скользящее окно: " + winLabel(W[+state.period])));
     d3.select("#f-period").property("disabled", state.level === "macro");
@@ -192,7 +232,7 @@
 
   function renderLegend() {
     const L = d3.select("#legend").html("");
-    if (state.mode === "type" || state.mode === "moved") {
+    if (state.mode === "type" || state.mode === "moved" || state.mode === "typeconf") {
       const counts = d3.rollup(ok, (v) => v.length, (m) => (state.mode === "moved" ? (m.moved ? m.types[W.length - 1] : -1) : typeOf(m)));
       (state.mode === "moved" ? types : cur()).forEach((t) => {
         const b = L.append("button").attr("type", "button").attr("class", "item")
@@ -203,6 +243,7 @@
         b.append("span").text(`${t.name} · ${fInt(counts.get(t.id) || 0)}`);
       });
       if (state.mode === "moved") L.append("span").attr("class", "item").html(`<span class="sw" style="background:${C.other}"></span>тип не менялся или колебание на границе`);
+      if (state.mode === "typeconf") L.append("span").attr("class", "item").html(`уверенность в типе (запас до соседнего типа, среднее 2023 и 2024): ${[[1, "≥ 0,25"], [0.72, "0,15–0,25"], [0.46, "0,05–0,15"], [0.24, "< 0,05"]].map(([v, l]) => `<span class="sw" style="border-radius:2px;background:${d3.interpolateRgb(C.absent, "#1baf7a")(v)}" title="${l}"></span>`).join(" ")} высокая → низкая`);
     } else if (seq) {
       const r = L.append("div").attr("class", "ramp");
       const dom = seq.domain();
@@ -216,7 +257,23 @@
     L.append("span").attr("class", "item").html(`<span class="sw" style="background:${C.absent};border:1px solid #c3c2b7"></span>нет в данных о расходах`);
   }
 
-  d3.select("#f-period").on("change", (e) => { state.period = e.target.value; paint(); if (state.sel) renderPanel(byId.get(state.sel)); });
+  d3.select("#f-period").on("change", (e) => { stopPlay(); state.period = e.target.value; paint(); if (state.sel) renderPanel(byId.get(state.sel)); });
+  // ▶ — карта проходит 13 окон подряд
+  let playT = null;
+  const playBtn = d3.select("#f-play");
+  function stopPlay() { clearInterval(playT); playT = null; playBtn.attr("aria-pressed", "false").text("▶"); }
+  playBtn.on("click", () => {
+    if (playT) return stopPlay();
+    if (state.level === "macro") { state.level = "types"; d3.select("#f-level").property("value", "types"); }
+    playBtn.attr("aria-pressed", "true").text("❚❚");
+    const stepW = () => {
+      const i = state.period === "main" ? 0 : (+state.period + 1) % W.length;
+      state.period = String(i); d3.select("#f-period").property("value", i); paint();
+      if (state.sel) renderPanel(byId.get(state.sel));
+      if (i === W.length - 1) stopPlay();
+    };
+    stepW(); playT = setInterval(stepW, 1100);
+  });
   d3.select("#f-level").on("change", (e) => { state.level = e.target.value; state.isolate = null; paint(); if (state.sel) renderPanel(byId.get(state.sel)); });
   d3.select("#f-mode").on("change", (e) => { state.mode = e.target.value; buildScale(); paint(); });
   d3.select("#f-region").on("change", (e) => {
@@ -230,6 +287,12 @@
     if (m) select(m.id, true);
   });
 
+  window.addEventListener("smc:select", (e) => {
+    const m = byId.get(e.detail); if (!m) return;
+    const top = document.getElementById("map").getBoundingClientRect().top + window.scrollY - 64;
+    window.scrollTo({ top, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    select(m.id, true);
+  });
   function select(id, zoomIn) {
     state.sel = id;
     paint();
@@ -243,7 +306,7 @@
 
   /* ---------- карточка МО ---------- */
   function lineChart(el, opts) {
-    const w = opts.w || 320, h = opts.h || 150, m = { t: 8, r: 10, b: 22, l: 46 };
+    const w = opts.w || 320, h = opts.h || 150, m = { t: 10, r: 10, b: 24, l: 58 };
     const s = d3.select(el).append("svg").attr("viewBox", `0 0 ${w} ${h}`).attr("width", "100%");
     const x = d3.scaleLinear().domain([0, opts.n - 1]).range([m.l, w - m.r]);
     const all = opts.series.flatMap((d) => d.values).concat(opts.band ? opts.band.lo.concat(opts.band.hi) : []);
@@ -328,7 +391,11 @@
     add("Население, 1.01.2024", m.pop ? fInt(m.pop) : "—");
     add("Траты на жителя, ₽/мес.", fInt(m.spend));
     add("К медиане России", (m.spend >= natTot ? "+" : "") + fPct(m.spend / natTot - 1));
+    { const same = ok.filter((x) => x.type === m.type), below = same.filter((x) => x.spend < m.spend).length;
+      add("Траты: место внутри своего типа", `${fPct0(below / Math.max(1, same.length - 1))} МО типа тратят меньше`); }
     add("Доступность рынков (0–1000)", m.ma == null ? "—" : fInt(m.ma));
+    if (m.wage) add("Зарплата (Росстат), ₽/мес", fInt(m.wage));
+    if (m.emp && m.emp.ind != null) add("Занятость: пром. / с/х / бюджет", [m.emp.ind, m.emp.agr, m.emp.pub].map((x) => (x == null ? "—" : fPct0(x))).join(" / "));
     add("Летом траты сверх сезона страны", (m.summer > 0 ? "+" : "") + fPct(Math.expm1(m.summer)));
     add("Рост трат 2024/2023 отн. страны", metricFmt.growth(m.growth));
     add("Уверенность в типе 2023 / 2024", `${f2(m.conf[0])} / ${f2(m.conf[1])}`);
@@ -378,7 +445,7 @@
       state.isolate = t.id; state.mode = "type"; d3.select("#f-mode").property("value", "type"); buildScale(); paint();
       document.getElementById("map").scrollIntoView({ behavior: "smooth" });
     };
-    const c = grid.append("div").attr("class", "tcard").attr("tabindex", 0).attr("role", "button").attr("aria-label", `Показать тип «${t.name}» на карте`)
+    const c = grid.append("div").attr("class", "tcard").attr("data-type", t.id).style("border-top-color", t.color).attr("tabindex", 0).attr("role", "button").attr("aria-label", `Показать тип «${t.name}» на карте`)
       .on("click", showType).on("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); showType(); } });
     const inT = ok.filter((m) => m.type === t.id);
     const parts = d3.rollups(inT, (v) => v.length / inT.length, (m) => m.macro).sort((a, b) => b[1] - a[1]);
@@ -474,7 +541,7 @@
     const col = (x, ys, vals, anchor, dx) => types.forEach((t, k) => {
       svgA.append("rect").attr("x", x).attr("y", ys[k]).attr("width", colW).attr("height", Math.max(1, vals[k] * ky)).attr("fill", t.color).attr("rx", 2);
       svgA.append("text").attr("x", x + dx).attr("y", ys[k] + (vals[k] * ky) / 2).attr("dy", "0.35em").attr("text-anchor", anchor)
-        .attr("font-size", 12).attr("fill", C.ink).text(`${t.name} · ${fInt(vals[k])}`);
+        .attr("font-size", 13).attr("fill", C.ink).text(`${short(t)} · ${fInt(vals[k])}`);
     });
     col(x0, yL, outT, "end", -8);
     col(x1, yR, inT, "start", colW + 8);

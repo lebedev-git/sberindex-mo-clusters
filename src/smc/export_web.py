@@ -143,6 +143,7 @@ def export_site(state: dict) -> None:
     growth_rel = (s24 / s23) / g_nat - 1                      # рост трат относительно медианного по стране
     mp = p.categories.index("Маркетплейсы")
     d_mp = p.cats[:, 12:, mp].mean(1) / s24 - p.cats[:, :12, mp].mean(1) / s23   # сдвиг доли, доли единицы
+    ros = state.get("rosstat_mo")
     mo = []
     for tid, r in ref.iterrows():
         tid = int(tid)
@@ -172,8 +173,16 @@ def export_site(state: dict) -> None:
                 "conf": [float(conf[i, 0]), float(conf[i, -1])],
                 "growth": float(growth_rel[i]), "dmp": float(d_mp[i]),
             }
+        # Росстат (проверка, не признак): зарплата, руб./мес., и доли работников по группам разделов ОКВЭД2
+        rr = None if ros is None or i is None or not bool(ros.iloc[i]["matched"]) else ros.iloc[i]
+        rec["wage"] = None if rr is None else float(rr["wage_total"])
+        rec["wage_year"] = None if rr is None else int(rr["year"])
+        rec["emp"] = None if rr is None or not np.isfinite(rr["ind"]) else {g: float(rr[g]) for g in ("ind", "agr", "min", "pub", "trade")}
         mo.append(rec)
     json.dump(_round(mo), open(out / "mo.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+
+    if state.get("net_json"):
+        json.dump(state["net_json"], open(out / "net.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 
     # --- ряды по МО (руб.): итого + 5 категорий ---
     series = {int(t): [p.total[i].round().astype(int).tolist()] + [p.cats[i, :, j].round().astype(int).tolist()
@@ -262,3 +271,139 @@ def export_site(state: dict) -> None:
         if f.exists():
             meta[extra.removesuffix(".json")] = json.load(open(f, encoding="utf-8"))
     json.dump(_round(meta, 4), open(out / "meta.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+    export_v2(res, out)
+
+
+METHOD = {"kefrin": "KEFRiN", "kmeans": "k-means", "ward": "Уорд", "spectral": "Спектральный", "leiden": "Leiden", "gmm": "GMM"}
+EVENT = {"survive": "выжил", "split": "раскололся", "absorb": "поглощён", "disappear": "исчез", "emerge": "возник"}
+GROUPS = ("ind", "agr", "min", "pub", "trade")
+
+
+def num(x: float, nd: int = 2) -> str:
+    """Число по-русски: десятичная запятая, минус — знак минуса."""
+    return f"{x:.{nd}f}".replace(".", ",").replace("-", "−")
+
+
+def pct(x: float, nd: int = 0) -> str:
+    return num(100 * x, nd) + "%"
+
+
+def cfg_name(s: str) -> str:
+    """'kefrin k=4; spectral k=6' -> 'KEFRiN, k = 4; Спектральный, k = 6' (повторы убираются)."""
+    out = []
+    for part in dict.fromkeys(x.strip() for x in str(s).split(";")):
+        if part in ("", "—"):
+            out.append("—")
+            continue
+        m, k = part.split(" k=")
+        out.append(f"{METHOD.get(m, m)}, k = {k}")
+    return "; ".join(out)
+
+
+def v2_summaries(res: Path, types: dict) -> dict:
+    """Блоки site/data/v2.json из файлов results/. Блок = None, если его результата нет.
+    Тексты summary собираются из чисел results/ — их сверяет scripts/check_claims.py."""
+    def js(name):
+        f = res / name
+        return json.load(open(f, encoding="utf-8")) if f.exists() else None
+
+    v2 = {k: None for k in ("aggregation", "imm", "synthetic", "leadlag", "events", "spatial", "rosstat", "mobility", "gmm")}
+    if (res / "aggregation.csv").exists():
+        ag = pd.read_csv(res / "aggregation.csv")
+        v2["aggregation"] = [{"rule": r.rule_name.split(" (")[0], "variant": None if pd.isna(r.grades) else f"m = {int(r.grades)}",
+                              "macro": cfg_name(r.macro_winners), "detailed": cfg_name(r.detailed), "ties": int(r.ties),
+                              "same_as_final": bool(r.final_is_winner), "unique": bool(r.final_unique_winner), "final_rank": int(r.final_rank)}
+                             for r in ag.itertuples()]
+    imm = js("imm_rules.json")
+    if imm:
+        v2["imm"] = {"fidelity": imm["fidelity"], "depth": imm["depth"], "thresholds": imm["thresholds"],
+                     "cart_depth3": imm["cart_fidelity"]["depth3"],
+                     "types": [{"type": t["type"], "rules": t["rules"], "fidelity": t["fidelity"], "n": t["n"]} for t in imm["types"]]}
+    syn = js("synthetic_summary.json")
+    if syn:
+        mean = syn["mean_ari"]
+        cell = pd.DataFrame(syn["rows"]).pivot_table(index=["attr", "net"], columns="method", values="ari")
+        not_worse = int((cell["KEFRiN"] >= cell["k-means"] - syn.get("tie_tol", 0.01)).sum())
+        v2["synthetic"] = {"rows": syn["rows"], "share_sweep": syn["share_sweep"], "cells": syn["cells"], "kefrin_not_worse_than_kmeans": not_worse,
+                           "summary": (f"На синтетических сетях с известными группами KEFRiN не хуже k-means во всех {syn['cells']} ячейках "
+                                       if not_worse == syn["cells"] else f"На синтетических сетях KEFRiN не хуже k-means в {not_worse} из {syn['cells']} ячеек ") +
+                                      f"(средний ARI {num(mean['KEFRiN'])} против {num(mean['k-means'])}), но выигрыш мал; при сильном сигнале "
+                                      f"в сети точнее Leiden и спектральный метод (средний ARI {num(mean['Leiden'])} и {num(mean['Спектральный'])} по всей сетке). "
+                                      f"Доля сети {num(syn['kefrin_share'], 1)} отстаёт от лучшей на синтетике на {num(syn['share_config_gap_to_best'], 3)} ARI."}
+    ll = js("leadlag.json")
+    if ll:
+        lead = [x for x in ll["leaders"] if x["share"] is not None]
+        v2["leadlag"] = {"edges": ll["edges"], "share_lagged": ll["share_lagged"], "null_share": ll["null_share"], "p": ll["p"],
+                         "leaders": [{"from": x["from"], "to": x["to"], "share": x["share"], "lagged": x["lagged"], "p": x["p_binomial"]} for x in lead],
+                         "summary": f"У {pct(1 - ll['share_lagged'])} рёбер сети синхронности корреляция максимальна без сдвига; при случайном "
+                                    f"сдвиге рядов таких было бы {pct(1 - ll['null_share'])}. Устойчивого опережения между группами МО нет: "
+                                    f"доля рёбер, где ведёт первая группа, от {num(min(x['share'] for x in lead))} до {num(max(x['share'] for x in lead))} "
+                                    f"при ожидаемой 0,5 (все p > {num(np.floor(min(x['p_binomial'] for x in lead) * 10) / 10, 1)})."}
+    if (res / "cluster_events.csv").exists():
+        ev = pd.read_csv(res / "cluster_events.csv")
+        cnt = {e: int((ev.event == e).sum()) for e in EVENT}
+        lst = [{"window": r.window, "event": r.event, "type": int(r.type),
+                "detail": f"{types[int(r.type)]['short']}: {EVENT[r.event]}"
+                          + (" на " + " и ".join(f"«{types[int(t)]['short']}»" for t in json.loads(r.to)) if r.event == "split" else "")}
+               for r in ev[ev.event != "survive"].itertuples()]
+        n_tr = int(ev.window.nunique())
+        v2["events"] = {"counts": cnt, "list": lst, "transitions": n_tr,
+                        "summary": f"За {n_tr} переходов между соседними окнами из {len(ev[ev.event != 'emerge'])} случаев "
+                                   f"{cnt['survive']} — «выжил»; расколов {cnt['split']}, поглощений {cnt['absorb']}, исчезновений "
+                                   f"{cnt['disappear']}, новых типов {cnt['emerge']}."}
+    sp_ = js("spatial_autocorr.json")
+    if sp_:
+        t = sp_["types"]
+        v2["spatial"] = {"geo_same": t["geo"]["same"], "geo_null": t["geo"]["null"], "net_same": t["net"]["same"], "net_null": t["net"]["null"],
+                         "net_neighbours_share": sp_["net_edges_between_neighbours_share"],
+                         "region_geo_same": sp_["region"]["geo"]["same"], "region_net_same": sp_["region"]["net"]["same"],
+                         "summary": f"У соседних по границе МО тип совпадает в {pct(t['geo']['same'])} пар (при случайных метках — {pct(t['geo']['null'])}). "
+                                    f"Рёбра сети синхронности лишь в {pct(sp_['net_edges_between_neighbours_share'], 1)} случаев соединяют соседей, "
+                                    f"а тип по ним совпадает в {pct(t['net']['same'])} пар: типы не сводятся к географии."}
+    ro = js("rosstat_validation.json")
+    if ro:
+        y = str(ro["main_year"])
+        r = ro["years"][y]
+        rt = pd.read_csv(res / "rosstat_types.csv", index_col=0)
+        v2["rosstat"] = {"coverage": r["coverage"], "year": int(y), "eta2": r["eta2"], "eta2_macro": r["eta2_macro"],
+                         "eta2_wage_beyond_spend": r["eta2_log_wage_resid_level"], "spearman_wage_spend": r["spearman_wage_spend"],
+                         "types": [{"type": int(c), "wage": float(x.wage), "emp": {g: float(x[g]) for g in GROUPS}} for c, x in rt.iterrows()],
+                         "macro": [{"type": int(c), "wage": float(w)} for c, w in r["macro_wage"].items()],
+                         "lens": {"ari": r["lens"]["ari"], "nmi": r["lens"]["nmi"]},
+                         "check_year": {k: ro["years"][k]["eta2"]["log_wage"] for k in ro["years"]},
+                         "summary": f"Типы объясняют {pct(r['eta2']['log_wage'])} разброса логарифма зарплаты ({y}, "
+                                    f"{r['coverage']:,} МО), ".replace(f"{r['coverage']:,}", f"{r['coverage']:,}".replace(",", " "))
+                                    + f"во многом через уровень трат (ρ Спирмена {num(r['spearman_wage_spend'])}); доли занятых по отраслям — "
+                                    f"от {pct(min(r['eta2'][g] for g in GROUPS))} до {pct(max(r['eta2'][g] for g in GROUPS))}. "
+                                    f"Типология только по рынку труда совпадает с нашей слабо (ARI {num(r['lens']['ari'])}): "
+                                    f"типы описывают потребление, а не отраслевую структуру."}
+    mob = js("mobility_check.json")
+    if mob:
+        r = mob["periods"][mob["main_period"]]
+        v2["mobility"] = {"n": r["n"], "eta2": r["eta2_log"], "eta2_without_spb": r["eta2_log_without_spb"], "period": mob["main_period"],
+                          "types": r["types"],
+                          "summary": f"В СЗФО ({r['n']} МО) типы объясняют {pct(r['eta2_log'])} разброса логарифма среднего расстояния покупок, "
+                                     f"без округов Петербурга — {pct(r['eta2_log_without_spb'])}. Один федеральный округ и два периода — "
+                                     f"иллюстрация, а не проверка."}
+    gm = js("gmm_check.json")
+    if gm:
+        w = gm["winner_with_gmm"]
+        v2["gmm"] = {"in_vote": False, "winner_unchanged": gm["winner_unchanged"], "best_k": gm["best_gmm_k"], "copeland_rank": gm["best_gmm_rank"],
+                     "candidates": gm["candidates"],
+                     "summary": f"С гауссовой смесью среди кандидатов (всего конфигураций: {gm['candidates']}) победитель Коупленда прежний — "
+                                f"{cfg_name(f'{w[0]} k={w[1]}')}; лучшая GMM (k = {gm['best_gmm_k']}) — на {gm['best_gmm_rank']}-м месте."}
+    return v2
+
+
+def export_v2(res: Path, out: Path) -> None:
+    """site/data/v2.json — сводка дополнительных проверок для лендинга; перезаписывается при каждом вызове."""
+    types = {t["id"]: t for t in json.load(open(out / "types.json", encoding="utf-8"))}
+    json.dump(_round(v2_summaries(res, types), 4), open(out / "v2.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+
+
+if __name__ == "__main__":   # пересборка v2.json без полного прогона: python -m smc.export_web (из src/)
+    import sys
+    root = Path(__file__).resolve().parents[2]
+    export_v2(root / "results", root / "site" / "data")
+    print("v2.json пересобран")
+

@@ -1,0 +1,14 @@
+{
+  "covariance": "full",
+  "candidates": 53,
+  "gmm_eligible": 8,
+  "winner_with_gmm": [
+    "kefrin",
+    4
+  ],
+  "winner_unchanged": true,
+  "best_gmm_k": 4,
+  "best_gmm_rank": 27,
+  "best_gmm_copeland": -2.0,
+  "final_copeland_with_gmm": 34.0
+}

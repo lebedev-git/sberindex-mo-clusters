@@ -19,6 +19,7 @@ from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
+from smc import aggregation as AG  # noqa: E402
 from smc import clustering as C  # noqa: E402
 from smc import dynamics as D  # noqa: E402
 from smc import graphs as G  # noqa: E402
@@ -35,23 +36,6 @@ def log(msg: str) -> None:
     line = f"[{time.strftime('%H:%M:%S')}] {msg}"
     print(line, flush=True)
     LOG.append(line)
-
-
-def copeland(df: pd.DataFrame, directions: dict[str, int]) -> pd.Series:
-    """Правило Коупленда: конфигурация A побеждает B, если лучше по большинству метрик.
-    Счёт = победы - поражения. Метрики — «избиратели», конфигурации — «кандидаты»."""
-    cols = [c for c in directions if c in df and df[c].notna().all()]
-    V = np.column_stack([df[c].to_numpy() * directions[c] for c in cols])
-    n = len(df)
-    score = np.zeros(n)
-    for a in range(n):
-        for b in range(n):
-            if a == b:
-                continue
-            better = (V[a] > V[b]).sum()
-            worse = (V[a] < V[b]).sum()
-            score[a] += np.sign(better - worse)
-    return pd.Series(score, index=df.index, name="copeland")
 
 
 def main() -> None:
@@ -138,10 +122,10 @@ def main() -> None:
     # «избиратели» Коупленда: ANUI не голосует — он выводится из AVI и AVU (двойной счёт)
     directions = {m: M.DIRECTIONS[m] for m in ("SW", "CH", "S_Dbw", "MQ", "AVI", "AVU", "stability_ARI")}
     eligible = comp[comp.min_size >= 0.01 * n]
-    comp["copeland"] = copeland(eligible, directions).reindex(comp.index)
+    comp["copeland"] = AG.copeland(eligible, directions).reindex(comp.index)
     comp.to_csv(out / "methods_icvi.csv")
     # победитель среди методов при каждом k
-    wins = eligible.groupby(level="k").apply(lambda d: copeland(d.droplevel("k"), directions).idxmax())
+    wins = eligible.groupby(level="k").apply(lambda d: AG.copeland(d.droplevel("k"), directions).idxmax())
     wins.rename("best_method").to_csv(out / "best_method_by_k.csv")
     log("победители Коупленда по k: " + wins.to_dict().__repr__())
 
@@ -170,6 +154,12 @@ def main() -> None:
                              "alt_copeland_any_method": None if alt.empty else "{} k={}".format(*alt["copeland"].idxmax())})
         pd.DataFrame(sens).to_csv(out / "selection_sensitivity.csv", index=False)
     fm, fk, mk = cfg["final"]["method"], cfg["final"]["k"], cfg["final"]["macro_k"]
+    # устойчивость выбора к правилу агрегирования индексов (Коупленд, Борда, Шульце, пороговое)
+    if "stability_ARI" in el:
+        agg = AG.table(el, directions, lambda m: detailed_for(m, sel["min_k_detailed"], sel["min_stability"]), (fm, mk),
+                       tuple(cfg["aggregation"]["threshold_grades"]))
+        agg.to_csv(out / "aggregation.csv", index=False)
+        log("агрегирование: " + "; ".join(f"{r.rule_name}: {r.macro_winners}" for r in agg.itertuples()))
     selection = {"rule_detailed": None if rule_detailed is None else list(rule_detailed), "rule_macro": [str(rule_macro[0]), int(rule_macro[1])],
                  "config_detailed": [fm, fk], "config_macro": [fm, mk],
                  "match": rule_detailed is not None and [fm, fk] == list(rule_detailed) and [fm, mk] == list(rule_macro), **sel,
@@ -343,7 +333,71 @@ def main() -> None:
     json.dump(ext, open(out / "external_validation.json", "w", encoding="utf-8"), ensure_ascii=False, indent=2)
     log("внешняя проверка: " + json.dumps({k: round(v, 3) for k, v in ext.items()}, ensure_ascii=False))
 
-    state = {"panel": p, "full": full, "X": X, "graphs": graphs, "main_lab": main_lab, "WL": WL,
+    # 7. Интерпретация и внешние проверки (типология не меняется) ------------------------------
+    from smc import events as EV, explain as EX, layout as LY, leadlag as LL, rosstat as RS, spatial as SP
+    from smc.export_web import type_names
+    tnames = type_names(prof, main_lab, p.ids, "configs/type_names.yaml", "types")
+    mnames = type_names(prof_macro, macro_lab, p.ids, "configs/type_names.yaml", "macro")
+    imm = EX.explain_types(full.raw, main_lab, seed)
+    json.dump(imm, open(out / "imm_rules.json", "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    log(f"IMM: совпадение с типами {imm['fidelity']:.3f}, глубина {imm['depth']}; CART той же сложности {imm['cart_fidelity']}")
+
+    ros_mo = None
+    rc = cfg["rosstat"]
+    if Path(rc["path"]).exists():
+        ros = {}
+        for y in (rc["year"], rc["check_year"]):
+            R = RS.match(rc["path"], p.meta.oktmo, y)
+            ros[y], ros_types = RS.validate(main_lab, macro_lab, R, seed, rc["lens_k"])
+            if y == rc["year"]:
+                ros_types.to_csv(out / "rosstat_types.csv")
+                lw, lev = np.log(R.wage_total.to_numpy(dtype=float)), full.raw["level"].to_numpy()
+                ok = np.isfinite(lw)
+                resid = lw[ok] - np.polyval(np.polyfit(lev[ok], lw[ok], 1), lev[ok])   # зарплата сверх уровня трат
+                from scipy.stats import spearmanr
+                ros[y]["spearman_wage_spend"] = float(spearmanr(p.total.mean(1)[ok], R.wage_total.to_numpy()[ok]).statistic)
+                ros[y]["eta2_log_wage_resid_level"] = M.eta_squared(resid, main_lab[ok])
+                ros[y]["macro_wage"] = {int(c): float(v) for c, v in pd.Series(R.wage_total.to_numpy()).groupby(macro_lab).median().items()}
+                base = R
+            else:  # паспорт МО на лендинге: последний доступный год, иначе основной
+                hit = R.matched.to_numpy()
+                ros_mo = base.copy()
+                ros_mo.loc[hit] = R.loc[hit]
+                ros_mo["year"] = np.where(hit, y, np.where(base.matched.to_numpy(), rc["year"], 0))
+        json.dump({"source": "Росстат, БД ПМО (обработка «Если быть точным», CC BY 4.0)", "main_year": rc["year"],
+                   "years": {str(k): v for k, v in ros.items()}}, open(out / "rosstat_validation.json", "w", encoding="utf-8"),
+                  ensure_ascii=False, indent=2, default=float)
+        log(f"Росстат {rc['year']}: сопоставлено {ros[rc['year']]['coverage']} МО, eta2 лог-зарплаты {ros[rc['year']]['eta2']['log_wage']:.3f}, "
+            f"вторая линза ARI {ros[rc['year']]['lens']['ari']:.3f}")
+
+    lc = cfg["layout"] | {"k_nn": k_nn}
+    net_json, lq = LY.build(X, A_net, main_lab, p.ids, cl["kefrin_net_share"], lc, seed)
+    json.dump(lq, open(out / "layout_quality.json", "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+
+    capitals = (p.meta.mo_status == "административный_центр_субъекта").to_numpy()
+    groups = {"Столицы регионов": capitals} | {mnames[c]["name"]: macro_lab == c for c in range(mk)}
+    rural, cap_m, cities = (next(mnames[c]["name"] for c in range(mk) if mnames[c].get("color") == col)
+                            for col in ("#2a78d6", "#e34948", "#1baf7a"))
+    pairs = [("Столицы регионов", rural), (cap_m, rural), (cap_m, cities), (cities, rural)]
+    llc = cfg["leadlag"]
+    ll = LL.analyze(full.series, A_net, groups, pairs, llc["max_lag"], llc["reps"], seed)
+    ll_road = LL.analyze(full.series, graphs["road"], groups, [], llc["max_lag"], 0, seed)
+    ll["road_graph"] = {k: ll_road[k] for k in ("edges", "share_lagged", "lag_hist", "corr_at_lag0_median")}
+    json.dump(ll, open(out / "leadlag.json", "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    log(f"опережение-запаздывание: доля рёбер с лагом {ll['share_lagged']:.3f} при нуле {ll['null_share']:.3f}")
+
+    ec = cfg["events"]
+    ev = EV.monic(WL, ends, ec["tau"], ec["tau_split"], ec["size_delta"])
+    ev.to_csv(out / "cluster_events.csv", index=False)
+    log("события MONIC: " + json.dumps(ev.event.value_counts().to_dict(), ensure_ascii=False))
+
+    sp_res = SP.analyze(cfg["data"]["reference_polygons"], cfg["data"]["reference_year"], p.ids, A_net, main_lab, macro_lab,
+                        pd.factorize(region)[0], cfg["spatial"]["reps"], seed)
+    json.dump(sp_res, open(out / "spatial_autocorr.json", "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    log(f"join count: соседи одного типа {sp_res['types']['geo']['same']:.3f}, рёбра сети {sp_res['types']['net']['same']:.3f}, "
+        f"нуль {sp_res['types']['geo']['null']:.3f}")
+
+    state = {"panel": p, "full": full, "rosstat_mo": ros_mo, "net_json": net_json, "X": X, "graphs": graphs, "main_lab": main_lab, "WL": WL,
              "macro_lab": macro_lab, "prof_macro": prof_macro, "labels_official": Lab, "selection": selection,
              "ends": ends, "win_feats": win_feats, "moved": moved, "conf": CONF, "prof": prof, "comp": comp, "cfg": cfg}
     if cfg["output"].get("site_data_dir"):

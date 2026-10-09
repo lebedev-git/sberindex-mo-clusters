@@ -23,7 +23,7 @@ window.SMCStage = function (D) {
   const typeNight = types.map((t) => { const h = d3.hsl(t.color); h.l = Math.max(h.l, 0.62); return rgb(h.formatHex()); });
   const conf = (m) => (m.conf ? (m.conf[0] + m.conf[1]) / 2 : 0);
   // уверенность → доля цвета типа (палитра с подавлением значения: 4 ступени)
-  const certLevel = (c) => (c >= 0.25 ? 1 : c >= 0.15 ? 0.72 : c >= 0.05 ? 0.46 : 0.24);
+  const certLevel = (c) => (c >= 0.25 ? 1 : c >= 0.1 ? 0.6 : 0.27); // 3 ступени: ≥ 0,25 · 0,10–0,25 · < 0,10
   const PAPER = [241, 240, 236];
   const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
   const INK = [17, 17, 16], NIGHT_DOT = [214, 220, 230];
@@ -70,7 +70,7 @@ window.SMCStage = function (D) {
   if (F) F.insertAdjacentHTML("afterbegin", [
     arctic ? `<li><b>Север живёт отдельно.</b> «${arctic.name}»: траты на жителя ${pctD(arctic.spend / medSpend - 1)} к медиане МО, но доля маркетплейсов ${fPct0(arctic.shares[4])} против ${fPct0(medMp)} — дорогая жизнь при сложной доставке.</li>` : "",
     capT ? `<li><b>Столицы в отрыве.</b> «${capT.short || capT.name}»: траты ${pctD(capT.spend / medSpend - 1)} к медиане, доля общепита в ${ru.format(".1f")(capT.shares[2] / medFood)} раза выше.</li>` : "",
-    asym ? `<li><b>У села пропадает лето.</b> ${fInt(asym.backward)} МО типа «${types[asym.to].short || types[asym.to].name}» за год перешли в тип «${types[asym.from].short || types[asym.from].name}»: летний подъём трат в общепите исчез; обратно — ${fInt(asym.forward)}.</li>` : "",
+    asym ? `<li><b>У части сёл пропадает лето.</b> ${fInt(asym.backward)} МО типа «${types[asym.to].short || types[asym.to].name}» за год перешли в тип «${types[asym.from].short || types[asym.from].name}»: летний подъём трат в общепите исчез; обратно — ${fInt(asym.forward)}.</li>` : "",
   ].join(""));
 
   /* ---------- геометрия сцены ---------- */
@@ -218,6 +218,7 @@ window.SMCStage = function (D) {
 
   /* ---------- состояния ---------- */
   const STATES = {
+    hero:     { label: "00 · <b>Столичные и Арктика</b> — цветом", count: () => `${fInt(N)} МО`, night: false, layer: "gray", legend: true, only: [3, 2] },
     geo:      { label: "01 · <b>География</b> · центры МО на контурах", count: () => `${fInt(N)} МО`, night: false, layer: "gray" },
     dorling:  { label: "02 · <b>Равновеликая карта</b> · каждое МО — одна точка", count: () => `${fInt(N)} точек одного размера`, night: false, layer: null },
     net:      { label: "03 · <b>Сеть синхронности трат</b>", count: () => `${fInt(N)} узлов · ${fInt(edges.length)} рёбер`, night: true, layer: null, edges: 1 },
@@ -229,20 +230,21 @@ window.SMCStage = function (D) {
   let cur = null, win = 0, layerA = { gray: 1, type: 0 }, layerFrom = null, layerTo = null, edgeA = 0, edgeFrom = 0, edgeTo = 0;
 
   function target(state, w) {
-    const pos = state === "geo" || state === "final" ? P.geo : state === "dorling" ? P.dorling
+    const pos = state === "geo" || state === "final" || state === "hero" ? P.geo : state === "dorling" ? P.dorling
       : state === "net" || state === "netcolor" ? P.net : state === "islands" ? P.islands : P.time[w];
     const night = STATES[state].night;
-    const r = state === "geo" ? 1.7 : state === "final" ? 1.4 : state === "dorling" ? P.rDorling : state === "islands" || state === "time" ? P.rIsl : 2.1;
+    const r = state === "geo" || state === "hero" ? 1.7 : state === "final" ? 1.4 : state === "dorling" ? P.rDorling : state === "islands" || state === "time" ? P.rIsl : 2.1;
     return nodes.map((n, i) => {
-      let c = INK, a = 0.9, ring = 0;
-      if (state === "net") { c = NIGHT_DOT; a = 0.85; }
+      let c = INK, a = 0.9, ring = 0, rr = r;
+      if (state === "hero") { const hl = STATES.hero.only.includes(n.t); c = hl ? typeRGB[n.t] : [150, 149, 144]; a = hl ? 0.95 : 0.55; rr = hl ? 2.3 : 1.5; }
+      else if (state === "net") { c = NIGHT_DOT; a = 0.85; }
       else if (state === "netcolor") { c = typeNight[n.t]; a = 0.95; }
       else if (state === "islands") { c = typeRGB[n.t]; a = 0.35 + 0.65 * certLevel(n.conf); }
       else if (state === "time") { c = typeRGB[n.t]; a = n.m.types[w] === n.t ? 0.92 : 1; ring = n.m.moved ? 1 : 0; }
       else if (state === "final") { c = typeRGB[n.t]; a = 0; }
       else if (state === "dorling") { c = INK; a = 0.82; }
       if (night && state === "net") a = 0.8;
-      return { x: pos[i][0], y: pos[i][1], r, c, a, ring };
+      return { x: pos[i][0], y: pos[i][1], r: rr, c, a, ring };
     });
   }
 
@@ -326,9 +328,12 @@ window.SMCStage = function (D) {
   function legend(st) {
     const el = document.getElementById("stage-legend");
     if (!st.legend) { el.classList.remove("show"); return; }
-    let html = types.map((t) => `<span><i style="background:${t.color}"></i>${t.short || t.name}</span>`).join("");
-    if (st.vsup) html += `<span style="margin-left:6px">уверенность:&nbsp;${[1, 0.72, 0.46, 0.24].map((v) => { const c = mix(PAPER, typeRGB[0], v); return `<i style="border-radius:2px;background:rgb(${c.map((x) => x | 0)})"></i>`; }).join("")}&nbsp;высокая → низкая</span>`;
+    let html = types.filter((t) => !st.only || st.only.includes(t.id)).map((t) => `<span><i style="background:${t.color}"></i>${st.only ? t.name : t.short || t.name}</span>`).join("") + (st.only ? `<span><i style="background:#969590"></i>остальные типы</span>` : "");
+    if (st.vsup) html = types.map((t, k) => `<span>${[1, 0.6, 0.27].map((v) => { const c = mix(PAPER, typeRGB[k], v); return `<i style="border-radius:1px;width:10px;background:rgb(${c.map((x) => x | 0)})"></i>`; }).join("")}&nbsp;${t.short || t.name}</span>`).join("") + `<span>уверенность в типе: высокая · средняя · низкая</span>`;
     el.innerHTML = html; el.classList.add("show");
+    // легенда — сразу под содержимым сцены, а не у нижнего края
+    const yMax = st === STATES.final || st === STATES.hero ? path.bounds(geo)[1][1] : d3.max(P.net || [], (p) => p[1]) || H - 80;
+    el.style.top = Math.min(H - el.offsetHeight - 12, yMax + 20) + "px"; el.style.bottom = "auto";
   }
 
   function labels(state) {
@@ -417,7 +422,7 @@ window.SMCStage = function (D) {
     nodes.forEach((n, i) => Object.assign(n, { x: t[i].x, y: t[i].y, r: t[i].r, c: t[i].c.slice(), a: t[i].a, ring: t[i].ring }));
     const st = STATES[state];
     layerA = { gray: st.layer === "gray" ? 1 : 0, type: st.layer === "type" ? 1 : 0 }; edgeA = st.edges || 0;
-    labels(state); draw(); buildIndex();
+    labels(state); legend(st); draw(); buildIndex();
   }
   let rT = null;
   window.addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(() => { const w0 = W; if (layout() && Math.abs(W - w0) > 2) snap(cur || "geo"); else if (W) snap(cur || "geo"); }, 180); });
@@ -437,8 +442,8 @@ window.SMCStage = function (D) {
     // заставка: точки опускаются на карту волной с запада на восток
     nodes.forEach((n, i) => { n.x = P.geo[i][0]; n.y = P.geo[i][1] - 26; n.r = 1.7; n.c = INK.slice(); n.a = 0; });
     layerA = { gray: 0, type: 0 };
-    cur = "geo";
-    go("geo", 0, reduce ? 1 : 1700);
+    cur = "hero";
+    go("hero", 0, reduce ? 1 : 1700);
   }
   start();
 };

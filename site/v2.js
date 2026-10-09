@@ -1,9 +1,9 @@
 /* Новые проверки (site/data/v2.json): правила голосования, правила типов (IMM), синтетика, опережение,
    события кластеров, пространственная автокорреляция, Росстат, мобильность. Рисуется только то, что есть. */
 (async function () {
-  const v = await d3.json("data/v2.json?v=20261009w").catch(() => null);
+  const v = await d3.json("data/v2.json?v=20261009y").catch(() => null);
   if (!v) return;
-  const types = await d3.json("data/types.json?v=20261009w").catch(() => []);
+  const types = await d3.json("data/types.json?v=20261009y").catch(() => []);
   const ru = d3.formatLocale({ decimal: ",", thousands: " ", grouping: [3] });
   const fInt = ru.format(",.0f"), f2 = ru.format(".2f"), fPct0 = ru.format(".0%"), fPct = ru.format(".1%");
   const tById = new Map(types.map((t) => [t.id, t]));
@@ -43,7 +43,7 @@
     const fin = A.find((a) => a.unique && a.same_as_final) || A[0];
     const detAll = A.every((a) => a.detailed.includes(fin.detailed));
     const uniq = A.filter((a) => a.unique && a.same_as_final).map(name), tie = A.filter((a) => !a.unique && a.same_as_final).map(name), other = A.filter((a) => !a.same_as_final).map(name);
-    const c = card(M, "Устойчивость выбора к правилу голосования", "Те же 45 конфигураций и те же 7 «голосующих» (6 индексов качества и устойчивость), разные правила агрегирования.");
+    const c = card("#v2-method-main", "Устойчивость выбора к правилу голосования", "Те же 45 конфигураций и те же 7 «голосующих» (6 индексов качества и устойчивость), разные правила агрегирования.");
     c.append("p").attr("class", "verdict").text([
       detAll ? `Детальный уровень (${fin.detailed}) входит в ответ всех ${A.length} вариантов.` : "",
       uniq.length ? `Макроуровень (${fin.macro}) однозначно выбирают: ${uniq.join(", ")}.` : "",
@@ -86,7 +86,7 @@
   const Cl = "#v2-cal";
   if (v.rosstat) {
     const R = v.rosstat;
-    const c = card(Cl, `Росстат: зарплата и занятость${R.year ? ", " + R.year : ""}`, `Муниципальная статистика (БД ПМО, обработка «Если быть точным», CC BY 4.0) в модель не входила${R.coverage ? `; сопоставлено ${fInt(R.coverage)} МО` : ""}.`);
+    const c = card("#v2-cal-main", `Росстат: зарплата и занятость${R.year ? ", " + R.year : ""}`, `Муниципальная статистика (БД ПМО, обработка «Если быть точным», CC BY 4.0) в модель не входила${R.coverage ? `; сопоставлено ${fInt(R.coverage)} МО` : ""}.`);
     if (R.summary) c.append("p").attr("class", "verdict").text(R.summary);
     const E = R.eta2 || {};
     const lab = { log_wage: "зарплата (лог)", ind: "занятость в промышленности", agr: "в сельском хозяйстве", min: "в добыче", pub: "в бюджетной сфере", trade: "в торговле" };

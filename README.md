@@ -48,6 +48,7 @@ python -m http.server 8000 --directory site          # лендинг: http://lo
 ```
 
 `run.py --fast` пропускает бутстреп устойчивости (≈3 мин вместо ≈13 мин); правило выбора проверяется только в полном режиме.
+Дополнительные проверки (их результаты уже в `results/`, а сводка — в `site/data/v2.json`): `python scripts/download_data.py --only rosstat` — выборка БД ПМО Росстата для внешней проверки; `python scripts/synthetic_check.py` — синтетическая сеть с известными группами; `python scripts/gmm_check.py` — смесь гауссиан как дополнительный метод; `python scripts/mobility_check.py` — индекс мобильности (СЗФО).
 `python scripts/us_check.py` — проверка на данных США. `python scripts/anchor_check.py` — почему окна динамики стартуют от основной типологии. `python scripts/cash_check.py` — проверка гипотезы о маркетплейсах внешними данными о доле безнала. Самотест индексов: `python src/smc/metrics.py`.
 `python scripts/check_claims.py` — реестр утверждений: 70 чисел и сравнений из отчёта, README и лендинга пересчитываются
 по `results/` и `site/data/`, плюс запрет на формулировки, которые раньше оказывались неверными. Python 3.12.
@@ -71,14 +72,25 @@ src/smc/dynamics.py       эволюционная кластеризация о
 src/smc/interpret.py      профили типов, правило Миркина, медоиды
 src/smc/external.py       внешняя проверка официальными метками
 src/smc/export_web.py     данные для лендинга
+src/smc/aggregation.py    правила голосования: Коупленд, Борда, Шульце, пороговое; самотест
+src/smc/explain.py        пороговое дерево IMM: правила типов на признаках; самотест
+src/smc/layout.py         раскладка сети t-SNE для лендинга (site/data/net.json)
+src/smc/leadlag.py        опережение-запаздывание по рёбрам сети
+src/smc/events.py         события типов между окнами (MONIC); самотест
+src/smc/spatial.py        пространственная автокорреляция типов (join count)
+src/smc/rosstat.py        внешняя проверка зарплатой и занятостью Росстата
 scripts/download_data.py  скачивание и проверка исходных данных
 scripts/us_check.py       проверка на США (Opportunity Insights + USDA ERS)
 scripts/check_claims.py   реестр утверждений: тексты против рассчитанных результатов
 scripts/anchor_check.py   якорный старт окон против цепочки (обоснование метода динамики)
 scripts/cash_check.py     гипотеза о маркетплейсах против доли безнала по регионам (Сбербанк + «Платформа ОФД», 2025)
+scripts/synthetic_check.py  синтетика: атрибутированная блочная модель с известными группами
+scripts/gmm_check.py      смесь гауссиан как дополнительный метод (вне голосования)
+scripts/mobility_check.py индекс мобильности СберИндекса (СЗФО) против типов
 data/external/            официальные российские метки МО (Росстат 2024 и др.) с описанием источников
 results/                  таблицы всех сравнений и итогов (CSV/JSON)
-site/                     статический лендинг (D3 v7, без сервера и внешних CDN)
+site/                     статический лендинг (D3 v7, без сервера и внешних CDN): stage.js — сцена истории (Canvas),
+                          app.js — карта и паспорт МО, v2.js — блоки дополнительных проверок, vendor/ — D3 и шрифты (OFL)
 docs/report.md            методологический отчёт
 docs/international_review.md  обзор международного опыта и источников
 scripts/build_report_pdf.py   сборка docs/report.pdf (pip install markdown; Edge или Chrome)

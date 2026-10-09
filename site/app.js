@@ -1,6 +1,6 @@
 /* Лендинг «Типы локальных экономик России». Чистый D3 v7, данные — site/data/*.json. */
 (async function () {
-  const DATA_VERSION = "20261009w"; // меняется при пересборке данных, чтобы браузер не брал старые из кэша
+  const DATA_VERSION = "20261009y"; // меняется при пересборке данных, чтобы браузер не брал старые из кэша
   const ru = d3.formatLocale({ decimal: ",", thousands: " ", grouping: [3], currency: ["", " ₽"] });
   const fInt = ru.format(",.0f"), fPct = ru.format(".1%"), f2 = ru.format(".2f"), f3 = ru.format(".3f"), fPct0 = ru.format(".0%");
   const MON = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
@@ -54,9 +54,9 @@
   const moved = ok.filter((m) => m.moved).length;
   const arcticType = types.find((t) => t.official && t.official.far_north_or_equated >= 0.99);
   const tiles = [
-    [`${macro.length} → ${types.length}`, `типов локальной экономики у ${fInt(meta.n_panel)} МО; уровни вложены на ${fPct(meta.final_icvi.nestedness_detailed_in_macro)}`],
-    [arcticType ? fPct0(arcticType.official.far_north_or_equated) : "—", `МО типа «${arcticType ? arcticType.name : "Арктика"}» — в официальном перечне районов Крайнего Севера и приравненных местностей, хотя модель его не видела`],
-    [fPct0(meta.external["eta2:log_pop"]), "разброса логарифма численности населения (Росстат) объясняют типы — без данных о населении в модели"],
+    [`${types.length} типов`, `в ${macro.length} макротипах; уровни вложены на ${fPct(meta.final_icvi.nestedness_detailed_in_macro)}`],
+    [arcticType ? fPct0(arcticType.official.far_north_or_equated) : "—", `МО типа «${arcticType ? arcticType.short || arcticType.name : "Арктика"}» — в перечне Крайнего Севера; модель его не видела`],
+    [fPct0(meta.external["eta2:log_pop"]), "разброса логарифма численности населения объясняют типы"],
     [fInt(moved), `МО значимо сменили тип за год — из ${fInt(ok.filter((m) => m.types[0] !== m.types[W.length - 1]).length)} формальных смен`],
   ];
   d3.select("#tiles").selectAll("div").data(tiles).join("div").attr("class", "tile").html((d) => `<div class="v">${d[0]}</div><div class="l">${d[1]}</div>`);
@@ -104,20 +104,31 @@
   const featById = new Map(geo.features.map((f) => [f.id, f]));
   // равновеликая точечная карта: каждое МО — круг одного размера рядом со своим центром (силы столкновений)
   const dotLayer = g.append("g").attr("class", "dot-layer").style("display", "none");
-  const DOT_R = 3.1, dotPos = new Map();
+  // «по населению»: площадь круга ∝ численности (Росстат), круги вместе занимают ~13% карты
+  const DOT_R = 3.1, dotPos = new Map(), dotCache = {};
   let dots = null;
-  function buildDots() {
-    const nodes = mo.filter((m) => m.status === "ok" && featById.get(m.id)).map((m) => { const c = path.centroid(featById.get(m.id)); return { m, f: featById.get(m.id), x: c[0], y: c[1], gx: c[0], gy: c[1] }; }).filter((d) => isFinite(d.x));
-    const sim = d3.forceSimulation(nodes).randomSource(d3.randomLcg(7))
-      .force("x", d3.forceX((d) => d.gx).strength(0.09)).force("y", d3.forceY((d) => d.gy).strength(0.09))
-      .force("c", d3.forceCollide(DOT_R + 0.45).iterations(2)).stop();
-    for (let k = 0; k < 220; k++) sim.tick();
-    nodes.forEach((d) => dotPos.set(d.m.id, [d.x, d.y]));
-    dots = dotLayer.selectAll("circle").data(nodes).join("circle").attr("class", "mo dot").attr("cx", (d) => d.x).attr("cy", (d) => d.y)
-      .attr("r", DOT_R / d3.zoomTransform(svg.node()).k ** 0.5);
+  function buildDots(mode) {
+    if (!dotCache[mode]) {
+      const nodes = mo.filter((m) => m.status === "ok" && featById.get(m.id)).map((m) => { const c = path.centroid(featById.get(m.id)); return { m, f: featById.get(m.id), x: c[0], y: c[1], gx: c[0], gy: c[1] }; }).filter((d) => isFinite(d.x));
+      if (mode === "pop") {
+        const popSum = d3.sum(nodes, (d) => d.m.pop || 0), s = Math.sqrt((0.13 * MW * MH) / (Math.PI * popSum));
+        nodes.forEach((d) => { d.r = Math.max(0.8, s * Math.sqrt(d.m.pop || 0)); });
+        nodes.sort((a, b) => b.r - a.r);
+      } else nodes.forEach((d) => { d.r = DOT_R; });
+      const sim = d3.forceSimulation(nodes).randomSource(d3.randomLcg(7))
+        .force("x", d3.forceX((d) => d.gx).strength(0.09)).force("y", d3.forceY((d) => d.gy).strength(0.09))
+        .force("c", d3.forceCollide((d) => d.r + 0.45).iterations(2)).stop();
+      for (let k = 0; k < 240; k++) sim.tick();
+      dotCache[mode] = nodes;
+    }
+    const nodes = dotCache[mode];
+    dotPos.clear(); nodes.forEach((d) => dotPos.set(d.m.id, [d.x, d.y]));
+    const k = d3.zoomTransform(svg.node()).k;
+    dots = dotLayer.selectAll("circle").data(nodes, (d) => d.m.id).join("circle").attr("class", "mo dot")
+      .attr("cx", (d) => d.x).attr("cy", (d) => d.y).attr("r", (d) => d.r / k ** 0.5);
     dots.on("mousemove", (ev, d) => paths.on("mousemove").call(null, ev, d.f)).on("mouseleave", hideTip).on("click", (ev, d) => paths.on("click").call(null, ev, d.f));
   }
-  const centerOf = (id) => (state.geom === "dots" && dotPos.get(id)) || path.centroid(featById.get(id));
+  const centerOf = (id) => (state.geom && state.geom !== "area" && dotPos.get(id)) || path.centroid(featById.get(id));
   const linkLayer = g.append("g").attr("class", "links-layer").style("pointer-events", "none");
   function drawLinks() {
     linkLayer.selectAll("*").remove();
@@ -137,7 +148,7 @@
   const zoom = d3.zoom().scaleExtent([1, 60]).on("zoom", (e) => {
     g.attr("transform", e.transform);
     g.selectAll(".links-layer circle").attr("r", function () { return +this.dataset.r / e.transform.k; });
-    if (dots) dots.attr("r", DOT_R / e.transform.k ** 0.5);
+    if (dots) dots.attr("r", (d) => d.r / e.transform.k ** 0.5);
   });
   svg.call(zoom).on("dblclick.zoom", null);
   const zoomTo = (feats, maxK = 60) => {
@@ -151,16 +162,15 @@
   d3.select("#zoom-msk").on("click", () => zoomRegion("Москва"));
   const setGeom = (gm) => {
     state.geom = gm;
-    if (gm === "dots" && !dots) buildDots();
-    geoLayer.style("display", gm === "dots" ? "none" : null);
-    extraLayer.style("display", gm === "dots" ? "none" : null);
-    dotLayer.style("display", gm === "dots" ? null : "none");
-    d3.select("#geom-area").attr("aria-pressed", gm !== "dots");
-    d3.select("#geom-dots").attr("aria-pressed", gm === "dots");
+    const pts = gm !== "area";
+    if (pts) buildDots(gm);
+    geoLayer.style("display", pts ? "none" : null);
+    extraLayer.style("display", pts ? "none" : null);
+    dotLayer.style("display", pts ? null : "none");
+    ["area", "dots", "pop"].forEach((x) => d3.select("#geom-" + x).attr("aria-pressed", gm === x));
     paint();
   };
-  d3.select("#geom-area").on("click", () => setGeom("area"));
-  d3.select("#geom-dots").on("click", () => setGeom("dots"));
+  ["area", "dots", "pop"].forEach((x) => d3.select("#geom-" + x).on("click", () => setGeom(x)));
   d3.select("#zoom-spb").on("click", () => zoomRegion("Санкт-Петербург"));
 
   const metricOf = {
@@ -193,7 +203,7 @@
     return v == null ? C.nodata : seq(v);
   }
   // уверенность принадлежности → насыщенность (палитра с подавлением значения, 4 ступени)
-  const certLevel = (m) => { const c = m.conf ? (m.conf[0] + m.conf[1]) / 2 : 0; return c >= 0.25 ? 1 : c >= 0.15 ? 0.72 : c >= 0.05 ? 0.46 : 0.24; };
+  const certLevel = (m) => { const c = m.conf ? (m.conf[0] + m.conf[1]) / 2 : 0; return c >= 0.25 ? 1 : c >= 0.1 ? 0.6 : 0.27; };
   function dimmed(f) {
     const m = byId.get(f.id);
     if (!m) return state.region !== "" || state.isolate != null;
@@ -239,11 +249,12 @@
           .classed("on", state.isolate === t.id).classed("off", state.isolate != null && state.isolate !== t.id)
           .attr("aria-pressed", state.isolate === t.id)
           .on("click", () => { state.isolate = state.isolate === t.id ? null : t.id; paint(); });
-        b.append("span").attr("class", "sw").style("background", t.color);
+        if (state.mode === "typeconf") [1, 0.6, 0.27].forEach((v) => b.append("span").attr("class", "sw").style("border-radius", "1px").style("margin-right", "-4px").style("background", d3.interpolateRgb(C.absent, t.color)(v)));
+        else b.append("span").attr("class", "sw").style("background", t.color);
         b.append("span").text(`${t.name} · ${fInt(counts.get(t.id) || 0)}`);
       });
       if (state.mode === "moved") L.append("span").attr("class", "item").html(`<span class="sw" style="background:${C.other}"></span>тип не менялся или колебание на границе`);
-      if (state.mode === "typeconf") L.append("span").attr("class", "item").html(`уверенность в типе (запас до соседнего типа, среднее 2023 и 2024): ${[[1, "≥ 0,25"], [0.72, "0,15–0,25"], [0.46, "0,05–0,15"], [0.24, "< 0,05"]].map(([v, l]) => `<span class="sw" style="border-radius:2px;background:${d3.interpolateRgb(C.absent, "#1baf7a")(v)}" title="${l}"></span>`).join(" ")} высокая → низкая`);
+      if (state.mode === "typeconf") L.append("span").attr("class", "item").text("три оттенка у каждого типа — уверенность (запас до соседнего типа, среднее 2023 и 2024): ≥ 0,25 · 0,10–0,25 · < 0,10");
     } else if (seq) {
       const r = L.append("div").attr("class", "ramp");
       const dom = seq.domain();

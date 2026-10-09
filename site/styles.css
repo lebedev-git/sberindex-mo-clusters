@@ -119,6 +119,8 @@ body.is-night .links a { background: transparent; color: #f3f4f6; border-color: 
 .story.night .step p.eyebrow { color: #7d8594; }
 .story.night .step .eyebrow::before { background: #f3f4f6; }
 .story-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.stage-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; object-position: 50% 50%; pointer-events: none; transition: opacity .8s ease; }
+.stage-poster.gone { opacity: 0; }
 .story-stage .hud { position: absolute; left: 24px; right: 24px; top: 18px; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; pointer-events: none; }
 .story-stage .hud .state { font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); transition: color .6s; }
 .story-stage .hud .state b { color: var(--text-primary); font-weight: 500; transition: color .6s; }
@@ -265,7 +267,7 @@ select:focus-visible, input:focus-visible, button:focus-visible, a:focus-visible
 .tcard canvas { width: 100%; height: auto; display: block; margin: 8px 0 6px; }
 .tcard p { font-size: 13px; line-height: 1.5; color: var(--text-secondary); margin: 0 0 10px; }
 .tcard .transit { background: var(--surface-2); border-radius: var(--radius); padding: 8px 10px; }
-.tcard .rule { font-family: var(--mono); font-size: 12px; line-height: 1.55; color: var(--text-primary); background: var(--surface-2); border-left: 2px solid var(--text-primary); padding: 8px 10px; margin: 0 0 10px; }
+.tcard .rule { font-family: var(--sans); font-size: 13.5px; line-height: 1.5; color: var(--text-primary); background: var(--surface-2); border-left: 2px solid var(--text-primary); padding: 8px 10px; margin: 0 0 10px; }
 .tcard .rule em { font-style: normal; color: var(--text-muted); display: block; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 2px; }
 .tcard .nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; font-size: 12px; color: var(--text-secondary); margin: 4px 0 10px; padding: 10px 0; border-top: 1px solid var(--grid); border-bottom: 1px solid var(--grid); }
 .tcard .nums b { font-size: 19px; line-height: 1.2; display: block; color: var(--text-primary); font-variant-numeric: tabular-nums; font-weight: 600; }
@@ -341,11 +343,12 @@ table.left th, table.left td { text-align: left; vertical-align: top; }
 .table-view summary:hover { color: var(--text-primary); }
 .v2-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 40px; }
 .more { border-top: 1px solid var(--rule); margin: 6px 0 0; }
-.more > summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 0; font-family: var(--mono); font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-secondary); }
+.more > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 14px 0; font-size: 15.5px; font-weight: 600; color: var(--text-primary); }
 .more > summary::-webkit-details-marker { display: none; }
-.more > summary::after { content: "+"; font-size: 18px; line-height: 1; color: var(--text-primary); }
-.more[open] > summary::after { content: "−"; }
-.more > summary:hover { color: var(--text-primary); }
+.more > summary::before { content: ""; width: 26px; height: 26px; flex: none; border: 1px solid var(--text-primary); border-radius: 50%; background: no-repeat center/10px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M3 1l4 4-4 4' fill='none' stroke='%23111' stroke-width='1.6'/%3E%3C/svg%3E"); transition: transform .2s; }
+.more[open] > summary::before { transform: rotate(90deg); }
+.more > summary:hover::before { background-color: var(--surface-2); }
+.more > summary:hover { text-decoration: underline; text-underline-offset: 4px; }
 .more[open] > summary { margin-bottom: 8px; }
 .verdict { font-size: 15px; line-height: 1.55; color: var(--text-primary); border-left: 2px solid var(--text-primary); padding: 2px 0 2px 12px; margin: 4px 0 12px; }
 .foot { color: var(--text-muted); font-size: 12px; padding-top: 24px; border-top: 1px solid var(--rule); margin-top: 48px; }
@@ -381,9 +384,9 @@ table.left th, table.left td { text-align: left; vertical-align: top; }
   .mast .brand span, .links { display: none; }
   .toc { -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); padding-right: 24px; }
   .story { display: flex; flex-direction: column; margin: 0 -16px; padding: 0; }
-  .story-stage { position: sticky; top: var(--mast-h); height: 52vh; order: -1; z-index: 3; box-shadow: 0 1px 0 var(--border); }
+  .story-stage { position: sticky; top: var(--mast-h); height: 46vh; order: -1; z-index: 3; box-shadow: 0 1px 0 var(--border); }
   .story-steps { padding: 0 16px 30vh; z-index: 1; }
-  .step { min-height: 64vh; justify-content: flex-start; padding: 5vh 0 4vh; }
+  .step { min-height: 46vh; justify-content: flex-start; padding: 4vh 0 3vh; }
   .step.hero { min-height: 0; justify-content: flex-start; padding: 4vh 0 10vh; }
   .step.hero h1 { font-size: 34px; }
   .step p, .step .lede { font-size: 15.5px; }
@@ -392,8 +395,9 @@ table.left th, table.left td { text-align: left; vertical-align: top; }
   .stage-time { bottom: 30px; left: 12px; right: 12px; }
   .story-stage .hud { left: 12px; right: 12px; top: 10px; }
   .story-stage .hud .count { display: none; }
-  .stage-labels .il { width: 110px; font-size: 11px; }
-  .stage-labels .il span { font-size: 10.5px; }
+  .stage-labels .il { width: 96px; font-size: 10.5px; line-height: 1.2; }
+  .stage-labels .il b { font-size: 11px; }
+  .stage-labels .il span { display: none; }
   .stage-labels .ml { display: none; }
 }
 @media (max-width: 820px) {

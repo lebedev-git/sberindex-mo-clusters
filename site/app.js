@@ -12,11 +12,14 @@
   const METHOD_RU = { kmeans: "k-means (признаки)", ward: "Ward (признаки)", spectral: "Спектральный (признаки + сеть)", leiden: "Leiden (сеть)", kefrin: "KEFRiN (признаки + сеть)" };
 
   d3.select("#map-sub").text("Загрузка данных (≈2 МБ)…");
-  const [geo, mo, types, meta, series, macro] = await Promise.all([
-    ...["mo.geojson", "mo.json", "types.json", "meta.json", "series.json", "macro.json"].map((f) => d3.json(`data/${f}?v=${DATA_VERSION}`)),
+  // ряды по месяцам (1,5 МБ) нужны только карточке МО — грузятся параллельно и не задерживают первый экран
+  let series = {};
+  d3.json(`data/series.json?v=${DATA_VERSION}`).then((x) => { series = x || {}; }).catch(() => {});
+  const [geo, mo, types, meta, macro] = await Promise.all([
+    ...["mo.geojson", "mo.json", "types.json", "meta.json", "macro.json"].map((f) => d3.json(`data/${f}?v=${DATA_VERSION}`)),
   ]);
   // субъекты, которых нет в справочнике МО (ДНР, ЛНР, Запорожская и Херсонская области): только контуры
-  const extra = await d3.json(`data/new_regions.geojson?v=${DATA_VERSION}`).catch(() => null);
+  const extraP = d3.json(`data/new_regions.geojson?v=${DATA_VERSION}`).catch(() => null);
   // D3 рисует полигоны на сфере: кольцо с «обратным» обходом закрашивает весь глобус.
   // Части, пересекающие 180° (Чукотка), после плоского упрощения могут развернуться — чиним по площади.
   const fixRings = (features) => features.forEach((f) => {
@@ -28,8 +31,12 @@
     f.geometry = { type: "MultiPolygon", coordinates: polys };
   });
   fixRings(geo.features);
-  if (extra) fixRings(extra.features);
   if (window.SMCStage) { try { window.SMCStage({ geo, mo, types, macro, meta, version: DATA_VERSION }); } catch (e) { console.error(e); } }
+  // дать браузеру нарисовать первый кадр сцены до тяжёлой сборки карты и графиков
+  const yieldFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+  await yieldFrame();
+  const extra = await extraP;
+  if (extra) fixRings(extra.features);
   const byId = new Map(mo.map((m) => [m.id, m]));
   const ok = mo.filter((m) => m.status === "ok");
   const cur = () => (state.level === "macro" ? macro : types);
@@ -171,6 +178,8 @@
     paint();
   };
   ["area", "dots", "pop"].forEach((x) => d3.select("#geom-" + x).on("click", () => setGeom(x)));
+  // по умолчанию — равные точки, как в истории: площадь не искажает вес территорий
+  setTimeout(() => { if (!state.geom) setGeom("dots"); }, 1200);
   d3.select("#zoom-spb").on("click", () => zoomRegion("Санкт-Петербург"));
 
   const metricOf = {
@@ -315,6 +324,7 @@
     }
   }
 
+  await yieldFrame();
   /* ---------- карточка МО ---------- */
   function lineChart(el, opts) {
     const w = opts.w || 320, h = opts.h || 150, m = { t: 10, r: 10, b: 24, l: 58 };
@@ -415,7 +425,7 @@
     const tb = P.append("table");
     tb.append("tr").html("<th>Доля трат</th><th>МО</th><th>Тип</th><th>Россия</th>");
     d3.range(5).forEach((j) => tb.append("tr").html(`<td>${CAT_SHORT[j]}</td><td>${fPct(m.shares[j])}</td><td>${fPct(types[t].shares[j])}</td><td>${fPct(natSh[j])}</td>`));
-    const sr = series[m.id];
+    const sr = series && series[m.id];
     if (sr) {
       P.append("h4").style("margin", "14px 0 4px").style("font-size", "14px").text("Траты на жителя по месяцам, ₽");
       const div = P.append("div").node();
@@ -496,6 +506,7 @@
   types.forEach((t) => tt.append("tr").html(`<td><span class="sw" style="background:${t.color}"></span> ${t.name}</td><td>${t.size}</td><td>${fInt(t.spend)}</td>` +
     t.shares.map((s) => `<td>${fPct(s)}</td>`).join("") + `<td>${fPct(Math.expm1(t.summer))}</td><td>${fInt(t.ma)}</td>`));
 
+  await yieldFrame();
   /* ---------- динамика ---------- */
   const T = meta.transitions, TC = meta.transitions_confident;
   const tm = d3.select("#trans").append("table").attr("class", "tm");
@@ -587,6 +598,7 @@
   lineChart(ts, { n: meta.months.length, ticks: [0, 6, 12, 18, 23], xFmt: monthFmt, h: 230, w: 560,
     series: types.map((t) => ({ name: t.name, values: t.q50, color: t.color })).concat([{ name: "Россия (медиана МО)", values: meta.national.total, color: C.ink, dash: "4 3", width: 1.5 }]) });
 
+  await yieldFrame();
   /* ---------- метод ---------- */
   const steps = [
     ["Данные", `${fInt(meta.n_panel)} МО × 24 мес. × 6 категорий трат СберИндекса; справочник МО, доступность рынков, дороги.`],
@@ -745,6 +757,7 @@
   fiKeys.forEach(([k, l]) => fit.append("tr").html(`<td>${l}</td><td>${k === "CH" ? fInt(fi[k]) : f3(fi[k])}</td><td>${k === "CH" ? fInt(fi.random_mean[k]) : f3(fi.random_mean[k])}</td><td>${fi.vs_random_z[k] == null ? "—" : ru.format(",.1f")(fi.vs_random_z[k])}</td>`));
   d3.select("#final-icvi").append("div").append("p").attr("class", "note").text(`z > 0 — итог лучше случайного с учётом направления индекса. AVU при k = 6 у всех методов (0,48–0,50) около случайного уровня (0,47) и даже хуже его: на kNN-графе синхронности межтиповые связи сосредоточены между соседними по профилю типами, поэтому AVU здесь не различает разбиения — выводы опираются на AVI, MQ и ANUI. S_Dbw: Scat = ${f3(fi.Scat)}, Dens_bw = ${f3(fi.Dens_bw)}; кластеров с нулевой плотностью в центре — ${fi.S_Dbw_zero_density_clusters}, поэтому S_Dbw сравнивается только при одинаковом k. CH/N = ${f3(fi.CH_per_N)}. MQ трактуется как модулярность Ньюмана–Гирван (в Положении не расшифрован).`);
 
+  await yieldFrame();
   /* ---------- калибровка ---------- */
   if (meta.calibration && window.renderCalibration) window.renderCalibration(meta.calibration, { fPct, f2, f3, fInt });
   else if (meta.calibration) d3.select("#calib").html(meta.calibration.html || "");

@@ -111,12 +111,22 @@ window.SMCStage = function (D) {
     });
     const okIds = new Set(ok.map((m) => m.id));
     layerGray = buildLayer((f) => (okIds.has(f.id) ? "#e2e1db" : "#f1f0ec"));
+    layerType = null;
+  }
+  function computeTypeLayer() {
     layerType = buildLayer((f) => {
       const n = nodeById.get(f.id);
       if (!n) return "#f1f0ec";
       const c = mix(PAPER, typeRGB[n.t], certLevel(n.conf));
       return `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
     });
+  }
+  // всё, что не нужно первому экрану, считается после первого кадра (или сразу, если читатель уже прокрутил)
+  let restReady = false;
+  function ensureRest() {
+    if (restReady || !P.geo) return;
+    computeTypeLayer(); computeDorling(); computeNet(); computeIslands();
+    restReady = true;
   }
 
   function computeDorling() {
@@ -221,8 +231,8 @@ window.SMCStage = function (D) {
     hero:     { label: "00 · <b>Столичные и Арктика</b> — цветом", count: () => `${fInt(N)} МО`, night: false, layer: "gray", legend: true, only: [3, 2] },
     geo:      { label: "01 · <b>География</b> · центры МО на контурах", count: () => `${fInt(N)} МО`, night: false, layer: "gray" },
     dorling:  { label: "02 · <b>Равновеликая карта</b> · каждое МО — одна точка", count: () => `${fInt(N)} точек одного размера`, night: false, layer: null },
-    net:      { label: "03 · <b>Сеть синхронности трат</b>", count: () => `${fInt(N)} узлов · ${fInt(edges.length)} рёбер`, night: true, layer: null, edges: 1 },
-    netcolor: { label: "04 · <b>Сеть</b> · цвет — тип (KEFRiN)", count: () => `6 типов · модулярность ${f2(meta.final_icvi.MQ)}`, night: true, layer: null, edges: 0.7, legend: true },
+    net:      { label: "03 · <b>Сеть синхронности трат</b>", count: () => `${fInt(N)} узлов · ${fInt(edges.length)} рёбер`, night: false, layer: null, edges: 1 },
+    netcolor: { label: "04 · <b>Сеть</b> · цвет — тип (KEFRiN)", count: () => `6 типов · модулярность ${f2(meta.final_icvi.MQ)}`, night: false, layer: null, edges: 0.7, legend: true },
     islands:  { label: "05 · <b>Типы</b> · центр — уверенные МО, кромка — пограничные", count: () => `6 типов · 4 макротипа`, night: false, layer: null, labels: true },
     time:     { label: "06 · <b>Время</b>", count: () => `значимо сменили тип: ${fInt(moved)}`, night: false, layer: null, labels: true, time: true },
     final:    { label: "07 · <b>Тип и уверенность</b>", count: () => `насыщенность — уверенность`, night: false, layer: "type", legend: true, vsup: true },
@@ -237,13 +247,12 @@ window.SMCStage = function (D) {
     return nodes.map((n, i) => {
       let c = INK, a = 0.9, ring = 0, rr = r;
       if (state === "hero") { const hl = STATES.hero.only.includes(n.t); c = hl ? typeRGB[n.t] : [150, 149, 144]; a = hl ? 0.95 : 0.55; rr = hl ? 2.3 : 1.5; }
-      else if (state === "net") { c = NIGHT_DOT; a = 0.85; }
-      else if (state === "netcolor") { c = typeNight[n.t]; a = 0.95; }
+      else if (state === "net") { c = INK; a = 0.72; }
+      else if (state === "netcolor") { c = typeRGB[n.t]; a = 0.92; }
       else if (state === "islands") { c = typeRGB[n.t]; a = 0.35 + 0.65 * certLevel(n.conf); }
       else if (state === "time") { c = typeRGB[n.t]; a = n.m.types[w] === n.t ? 0.92 : 1; ring = n.m.moved ? 1 : 0; }
       else if (state === "final") { c = typeRGB[n.t]; a = 0; }
       else if (state === "dorling") { c = INK; a = 0.82; }
-      if (night && state === "net") a = 0.8;
       return { x: pos[i][0], y: pos[i][1], r: rr, c, a, ring };
     });
   }
@@ -251,6 +260,7 @@ window.SMCStage = function (D) {
   let anim = null;
   function go(state, w = 0, dur = 1500) {
     if (!P.geo) return;
+    if (state !== "hero" && state !== "geo") ensureRest();
     const st = STATES[state];
     const tgt = target(state, w);
     const now = performance.now();
@@ -300,12 +310,12 @@ window.SMCStage = function (D) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
     if (layerA.gray > 0.01) { ctx.globalAlpha = layerA.gray; ctx.drawImage(layerGray, 0, 0, W, H); }
-    if (layerA.type > 0.01) { ctx.globalAlpha = layerA.type; ctx.drawImage(layerType, 0, 0, W, H); }
+    if (layerA.type > 0.01 && layerType) { ctx.globalAlpha = layerA.type; ctx.drawImage(layerType, 0, 0, W, H); }
     ctx.globalAlpha = 1;
     if (edgeA > 0.01 && edges.length) {
       ctx.beginPath();
       for (const [a, b] of edges) { const p = nodes[a], q = nodes[b]; ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); }
-      ctx.strokeStyle = `rgba(150,170,205,${0.11 * edgeA})`; ctx.lineWidth = 0.6; ctx.stroke();
+      ctx.strokeStyle = `rgba(17,17,16,${0.045 * edgeA})`; ctx.lineWidth = 0.5; ctx.stroke();
     }
     for (const n of nodes) {
       if (n.a < 0.02) continue;
@@ -414,10 +424,12 @@ window.SMCStage = function (D) {
     if (b.width < 10 || b.height < 10) return false;
     W = b.width; H = b.height; dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
-    computeGeo(); computeDorling(); computeNet(); computeIslands();
+    computeGeo(); restReady = false;
+    if (cur && cur !== "hero" && cur !== "geo") ensureRest(); else setTimeout(ensureRest, 400);
     return true;
   }
   function snap(state) { // мгновенно поставить состояние (после изменения размеров)
+    if (state !== "hero" && state !== "geo") ensureRest();
     const t = target(state, win);
     nodes.forEach((n, i) => Object.assign(n, { x: t[i].x, y: t[i].y, r: t[i].r, c: t[i].c.slice(), a: t[i].a, ring: t[i].ring }));
     const st = STATES[state];
@@ -428,22 +440,24 @@ window.SMCStage = function (D) {
   window.addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(() => { const w0 = W; if (layout() && Math.abs(W - w0) > 2) snap(cur || "geo"); else if (W) snap(cur || "geo"); }, 180); });
 
   /* ---------- запуск: сеть из net.json, если она есть ---------- */
-  async function start() {
-    try {
-      const nj = await d3.json(`data/net.json?v=${D.version || ""}`);
-      if (nj && nj.ids && nj.xy) {
-        const m = new Map(nj.ids.map((id, k) => [id, nj.xy[k]]));
-        netXY = Object.assign([...m.values()], { get: (id) => m.get(id) });
-        const idx = new Map(nodes.map((n) => [n.id, n.i]));
-        if (nj.edges) edges = nj.edges.map(([a, b]) => [idx.get(nj.ids[a]), idx.get(nj.ids[b])]).filter(([a, b]) => a != null && b != null);
-      }
-    } catch (e) { netXY = null; }
+  function start() {
     if (!layout()) return;
-    // заставка: точки опускаются на карту волной с запада на восток
-    nodes.forEach((n, i) => { n.x = P.geo[i][0]; n.y = P.geo[i][1] - 26; n.r = 1.7; n.c = INK.slice(); n.a = 0; });
-    layerA = { gray: 0, type: 0 };
+    // заставка: точки опускаются на карту волной с запада на восток; постер первого экрана гаснет
+    nodes.forEach((n, i) => { n.x = P.geo[i][0]; n.y = P.geo[i][1] - 16; n.r = 1.7; n.c = INK.slice(); n.a = 0; });
+    layerA = { gray: 0.6, type: 0 };
     cur = "hero";
-    go("hero", 0, reduce ? 1 : 1700);
+    go("hero", 0, reduce ? 1 : 900);
+    const poster = document.getElementById("stage-poster");
+    if (poster) { poster.classList.add("gone"); setTimeout(() => poster.remove(), 900); }
+    // сеть (t-SNE) догружается в фоне: к шагу 03 она уже на месте
+    d3.json(`data/net.json?v=${D.version || ""}`).then((nj) => {
+      if (!nj || !nj.ids || !nj.xy) return;
+      const m = new Map(nj.ids.map((id, k) => [id, nj.xy[k]]));
+      netXY = Object.assign([...m.values()], { get: (id) => m.get(id) });
+      const idx = new Map(nodes.map((n) => [n.id, n.i]));
+      if (nj.edges) edges = nj.edges.map(([a, b]) => [idx.get(nj.ids[a]), idx.get(nj.ids[b])]).filter(([a, b]) => a != null && b != null);
+      if (restReady) { computeNet(); if (cur === "net" || cur === "netcolor") snap(cur); }
+    }).catch(() => {});
   }
   start();
 };

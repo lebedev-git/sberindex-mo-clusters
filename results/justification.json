@@ -1,0 +1,41 @@
+{
+  "network": {
+    "ari_kefrin_vs_kmeans": 0.8294005090396259,
+    "reassigned": 136,
+    "sync_within_kmeans": 0.6057609119135929,
+    "sync_within_kefrin": 0.6372197339093207,
+    "sync_within_reassigned_kmeans": 0.3468122419417286,
+    "sync_within_reassigned_kefrin": 0.5704407816719559,
+    "silhouette_reassigned_kmeans": 0.06159372794096251,
+    "silhouette_reassigned_kefrin": -0.013603514268776843
+  },
+  "block_variance_share": {
+    "level": 0.3131296355183624,
+    "profile": 0.35717742699650146,
+    "season": 0.3296929374851361
+  },
+  "admin": {
+    "types": {
+      "V:arctic_any": 0.5938444468454414,
+      "V:far_north_or_equated": 0.5156207355934892,
+      "V:monotown": 0.2680044785488069,
+      "V:onp_agglomeration_core": 0.2192499660157073,
+      "V:regional_capital": 0.21591434329496184,
+      "eta2:log_pop": 0.43117336111260046,
+      "external_mean": 0.37396788856850116,
+      "eta2_market_access": 0.40369098344833815,
+      "groups": 6
+    },
+    "mo_kind": {
+      "V:arctic_any": 0.09351903262671167,
+      "V:far_north_or_equated": 0.13553736395734525,
+      "V:monotown": 0.2149475343630977,
+      "V:onp_agglomeration_core": 0.27408765215580605,
+      "V:regional_capital": 0.3256343042188639,
+      "eta2:log_pop": 0.30051675179500104,
+      "external_mean": 0.22404043985280428,
+      "eta2_market_access": 0.3903942621629098,
+      "groups": 4
+    }
+  }
+}

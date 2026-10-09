@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Типы локальных экономик России — по тратам жителей</title>
+  <meta name="description" content="Динамическая атрибутированная сеть 2016 муниципалитетов России по безналичным расходам жителей (СберИндекс, 2023–2024): типы локальных экономик, их география и изменения.">
+  <meta name="theme-color" content="#f9f9f7">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0b0b'/%3E%3Ccircle cx='10' cy='11' r='4' fill='%23e34948'/%3E%3Ccircle cx='22' cy='10' r='4' fill='%231baf7a'/%3E%3Ccircle cx='11' cy='22' r='4' fill='%232a78d6'/%3E%3Ccircle cx='22' cy='22' r='4' fill='%23eda100'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css?v=20261009r">
+</head>
+<body>
+<div class="viz-root">
+
+<header class="hero">
+  <h1>Типы локальных экономик России</h1>
+  <p class="lede">Какие экономики на самом деле живут в 2&nbsp;016 муниципалитетах страны — по тому, сколько и на что тратят жители.
+    Каждый муниципалитет — узел сети со своим профилем трат; рёбра связывают тех, чьи траты колеблются синхронно.
+    Типы найдены методом KEFRiN для сетей с признаками и прослежены помесячно по скользящим годовым окнам.</p>
+  <p class="byline">Решение трека «Кластеризация» онлайн-конкурса СберИндекса 2026 · Андрей Лебедев · данные СберИндекса за январь 2023 — декабрь 2024</p>
+  <div class="tiles" id="tiles"></div>
+  <p class="links" id="links"></p>
+</header>
+
+<nav class="toc" aria-label="Разделы">
+  <a href="#map">Карта</a><a href="#types">Типы</a><a href="#dynamics">Динамика</a><a href="#method">Метод</a><a href="#calibration">Проверка</a><a href="#use">Применение</a><a href="#data">Данные</a>
+</nav>
+
+<section id="map" class="section" style="padding-top:0">
+  <div class="filters" role="group" aria-label="Фильтры">
+    <label class="f">Уровень
+      <select id="f-level"><option value="types">6 типов</option><option value="macro">4 макротипа</option></select>
+    </label>
+    <label class="f w">Период
+      <select id="f-period"></select>
+    </label>
+    <label class="f w">Цвет карты
+      <select id="f-mode">
+        <option value="type">Тип экономики</option>
+        <option value="moved">Значимо сменили тип 2023→2024</option>
+        <option value="growth">Рост трат 2024/2023 относительно страны</option>
+        <option value="dmp">Сдвиг доли маркетплейсов 2024/2023</option>
+        <option value="spend">Траты на жителя, ₽/мес.</option>
+        <option value="share2">Доля общепита</option>
+        <option value="share4">Доля маркетплейсов</option>
+        <option value="share3">Доля транспорта</option>
+        <option value="summer">Летний избыток трат</option>
+        <option value="ma">Доступность рынков</option>
+        <option value="pop">Население (Росстат, 2024)</option>
+      </select>
+    </label>
+    <label class="f w">Регион
+      <select id="f-region"><option value="">Вся Россия</option></select>
+    </label>
+    <label class="f">Вид МО
+      <select id="f-kind"><option value="">Все</option></select>
+    </label>
+    <label class="f grow">Поиск
+      <input id="f-search" list="mo-list" placeholder="Название муниципалитета" autocomplete="off">
+      <datalist id="mo-list"></datalist>
+    </label>
+  </div>
+
+  <div class="map-layout">
+    <div class="card map-card">
+      <div class="map-head">
+        <div>
+          <h2 id="map-title">Типы экономики</h2>
+          <p class="sub" id="map-sub"></p>
+        </div>
+        <div class="tools">
+          <div class="seg" role="group" aria-label="Масштаб">
+            <button type="button" id="zoom-msk" aria-pressed="false">Москва</button>
+            <button type="button" id="zoom-spb" aria-pressed="false">Петербург</button>
+            <button type="button" id="reset-zoom" aria-pressed="false">Вся страна</button>
+          </div>
+        </div>
+      </div>
+      <div class="map-wrap"><svg id="map-svg" role="img" aria-label="Карта муниципалитетов России"></svg></div>
+      <div class="legend" id="legend"></div>
+      <p class="note" id="map-note">Щёлкните тип в легенде, чтобы оставить на карте только его. Колёсико — масштаб, перетаскивание — сдвиг, щелчок по МО — карточка с соседями по сети.</p>
+    </div>
+    <aside class="card panel" id="panel" aria-live="polite">
+      <p class="muted">Выберите муниципалитет на карте или через поиск.</p>
+    </aside>
+  </div>
+</section>
+
+<section id="types" class="section">
+  <h2>Четыре макротипа и шесть типов локальных экономик</h2>
+  <p class="sub">Типология двухуровневая: 4 макротипа (самое устойчивое разбиение, ARI на подвыборках ≈ 0,97) и 6 типов внутри них. Медианы за 2023–2024 гг.; доли — от всех безналичных трат. Полоса над макротипом — из каких типов он состоит.</p>
+  <div class="macro-row" id="macro-row"></div>
+  <div class="types-grid" id="types-grid"></div>
+  <p class="note" style="margin-top:12px">Чёрная риска на полосе — медиана России. Щелчок по карточке оставляет тип на карте.</p>
+  <details class="table-view"><summary>Таблица профилей типов</summary><div id="types-table"></div></details>
+</section>
+
+<section id="dynamics" class="section">
+  <h2>Как типы менялись: 2023 → 2024</h2>
+  <p class="sub" id="dyn-sub">Сравниваются годовые окна янв–дек 2023 и янв–дек 2024: они не пересекаются по месяцам, а сезонность внутри года одинакова, поэтому она не выдаёт себя за перемены. <b>Значимый переход</b> — МО уверенно принадлежит одному типу в 2023 и уверенно другому в 2024 (запас до границы соседнего типа не меньше порога τ). Остальные смены типа — колебания на границе.</p>
+  <div class="card"><h3>Потоки между типами: 2023 → 2024</h3><p class="sub">Слева — тип МО в 2023 году, справа — в 2024. Ширина ленты — число МО. Яркие ленты — значимые переходы, бледные — колебания на границе; горизонтальные полосы — МО, сохранившие тип.</p><div id="alluvial"></div></div>
+  <div class="dyn-layout">
+    <div class="card"><h3>Матрица переходов</h3><p class="sub">Строки — тип в 2023, столбцы — в 2024. Крупное число — все МО, в скобках — значимые переходы.</p><div id="trans"></div><div id="tau-sens"></div></div>
+    <div class="card"><h3>Куда двигались муниципалитеты</h3><div id="flows"></div></div>
+  </div>
+  <div class="dyn-layout">
+    <div class="card"><h3>Качество разбиения по окнам</h3><p class="sub">Каждая точка — годовое окно, своя сеть и своё разбиение.</p><div class="mini-charts stack" id="win-charts"></div></div>
+    <div class="card"><h3>Траты по типам, медиана, ₽ на жителя в месяц</h3><div id="type-series"></div></div>
+  </div>
+</section>
+
+<section id="method" class="section">
+  <h2>Метод</h2>
+  <div class="card intro">
+    <div>
+      <h3>Коротко, без формул</h3>
+      <p>Для каждого муниципалитета есть 24 месяца трат жителей: всего и по пяти категориям. Из них считаются <b>девять признаков</b> — уровень трат, структура корзины и сезонность, всё относительно медианы страны в тот же месяц, поэтому инфляция и общий рост безналичных платежей на тип не влияют.</p>
+      <p>Затем строится <b>сеть</b>: каждый муниципалитет соединяется с 15 самыми похожими по тому, как колеблются его траты месяц к месяцу. Метод KEFRiN ищет группы, внутри которых муниципалитеты похожи <b>и по признакам, и по связям</b> в сети.</p>
+      <p>Число групп, метод и все пороги выбирает не автор, а правило: семь индексов качества «голосуют» за 45 вариантов. Итог проверяется данными, которых модель не видела, — перечнями Росстата и индексом доступности рынков.</p>
+    </div>
+    <dl class="gloss">
+      <dt>МО</dt><dd>муниципальное образование: район, округ, город</dd>
+      <dt>Силуэт (SW)</dt><dd>насколько МО ближе к своему типу, чем к соседнему, от −1 до 1</dd>
+      <dt>Модулярность (MQ)</dt><dd>доля связей сети внутри типов сверх случайной</dd>
+      <dt>AVI / AVU</dt><dd>обособленность и «перемешанность» типов в сети</dd>
+      <dt>ARI</dt><dd>совпадение двух разбиений: 1 — одинаковые, 0 — как случайные</dd>
+      <dt>η², V Крамера</dt><dd>какая доля различий внешнего показателя объясняется типами</dd>
+      <dt>Коупленд</dt><dd>правило голосования: вариант выигрывает, если лучше по большинству индексов</dd>
+    </dl>
+  </div>
+  <ol class="pipeline" id="pipeline"></ol>
+  <div class="card"><h3>Пять правил построения рёбер</h3><p class="sub">Сети по одним узлам (2&nbsp;016 МО), k = 15 соседей. Гомофилия — средняя корреляция признаков на концах рёбер.</p><div id="graphs-table"></div></div>
+  <div class="dyn-layout">
+    <div class="card"><h3>Вклад сети в KEFRiN</h3><p class="sub">Доля сети в общем разбросе: 0 — обычный k-means по признакам. Выбрана правилом: наибольшая доля, при которой силуэт теряет не больше 0,005.</p><div class="mini-charts" id="sweep"></div></div>
+    <div class="card"><h3>Что меняет сеть</h3><p class="sub">KEFRiN против k-means при тех же 6 типах и тех же признаках.</p><div id="net-adds"></div></div>
+  </div>
+  <div class="card"><h3>Сравнение методов: внутренние индексы качества (ICVI)</h3><p class="sub" id="methods-sub"></p><div id="methods-table"></div></div>
+  <div class="dyn-layout">
+    <div class="card"><h3>Карта компромиссов: 45 конфигураций</h3><p class="sub">По горизонтали — качество по признакам (силуэт), по вертикали — по сети (модулярность); размер точки — устойчивость на подвыборках.</p><div id="tradeoff"></div></div>
+    <div class="card"><h3>Устойчивость к настройкам</h3><p class="sub">Совпадение с итоговой типологией (ARI), если менять одну настройку, а остальные оставить как в итоге.</p><div id="robust"></div></div>
+  </div>
+  <div class="card"><h3>Итоговое разбиение против случайного</h3><p class="sub">Те же размеры типов, метки перемешаны случайно (50 повторов). z — на сколько стандартных отклонений итог лучше случайного.</p><div class="split" id="final-icvi"></div></div>
+  <div class="card"><h3>Когда какой метод уместен</h3><div id="methods-when"></div></div>
+</section>
+
+<section id="calibration" class="section">
+  <h2>Проверка внешними данными и международный опыт</h2>
+  <p class="sub">Ни одна из характеристик ниже не входила в модель. Если типы с ними связаны, они описывают реальные различия территорий, а не шум.</p>
+  <div class="dyn-layout">
+    <div>
+      <div class="card"><h3>Внешняя проверка типов</h3><div id="external"></div></div>
+      <div class="card"><h3>Типы и официальные категории территорий</h3><p class="sub">Доля МО типа, входящих в официальный перечень, и медианная численность населения.</p><div id="official"></div></div>
+    </div>
+    <div>
+      <div class="card"><h3>Типы против деления «город — район — округ»</h3><p class="sub">Те же внешние метки, но для официального вида МО: объясняет ли типология больше, чем административная категория.</p><div id="admin-table"></div></div>
+      <div class="card prose" id="intl"></div>
+    </div>
+  </div>
+</section>
+
+<section id="use" class="section">
+  <h2>Как использовать</h2>
+  <p class="sub">Три разобранных примера на реальных муниципалитетах; кнопка открывает МО на карте вместе с его соседями по сети.</p>
+  <div class="use-grid" id="cases"></div>
+  <div class="use-grid" style="margin-top:var(--gap)">
+    <div class="card"><h3>Сравнение «похожего с похожим»</h3><p>Бенчмарки, рейтинги и оценку программ развития корректнее строить внутри типа: сельский район сравнивать с аграрной периферией, а не с областным центром. Карточка любого МО показывает его тип, отличие от медианы типа и ближайших соседей по синхронности трат.</p></div>
+    <div class="card"><h3>Ранний сигнал и настройка мер</h3><p>Значимый переход — МО, чей уклад потребления сменился уверенно, а не на границе: кандидат для проверки занятости, доходов и сезонной миграции. Север и удалённая Сибирь — высокая доля транспорта и низкая доля маркетплейсов: подсказки для логистики, розницы и цифровых сервисов. Пересчёт на новых месяцах — одной командой; новый признак или правило рёбер — одна функция и строка в YAML.</p></div>
+  </div>
+</section>
+
+<section id="data" class="section">
+  <h2>Данные, ограничения, воспроизведение</h2>
+  <div class="card prose" id="data-notes"></div>
+</section>
+
+<footer class="foot">
+  <p>Данные: «Потребительские безналичные расходы на уровне муниципальных образований по категориям трат», «Индекс доступности рынков», «Транспортные связи между МО» — СберИндекс, CC BY-SA 4.0. Границы МО — справочник муниципальных образований СберИндекса.</p>
+  <p>Контуры ДНР, ЛНР, Запорожской и Херсонской областей (в справочнике МО их нет) — © участники OpenStreetMap и geoBoundaries, ODbL. Код — MIT, D3 — ISC.</p>
+</footer>
+
+<div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+</div>
+<script src="vendor/d3.min.js"></script>
+<script src="app.js?v=20261009r"></script>
+</body>
+</html>

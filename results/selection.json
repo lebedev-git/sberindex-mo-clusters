@@ -1,0 +1,22 @@
+{
+  "rule_detailed": [
+    "kefrin",
+    6
+  ],
+  "rule_macro": [
+    "kefrin",
+    4
+  ],
+  "config_detailed": [
+    "kefrin",
+    6
+  ],
+  "config_macro": [
+    "kefrin",
+    4
+  ],
+  "match": true,
+  "min_k_detailed": 6,
+  "min_stability": 0.75,
+  "valid": true
+}

@@ -1,0 +1,12 @@
+{
+  "cramers_v_mo_type": 0.5410547275541627,
+  "cramers_v_region": 0.652133558316694,
+  "eta2_market_access": 0.40369098344833815,
+  "V:arctic_any": 0.5938444468454414,
+  "V:far_north_or_equated": 0.5156207355934892,
+  "V:monotown": 0.2680044785488069,
+  "V:onp_agglomeration_core": 0.2192499660157073,
+  "V:regional_capital": 0.21591434329496184,
+  "eta2:log_pop": 0.43117336111260046,
+  "external_mean": 0.37396788856850116
+}

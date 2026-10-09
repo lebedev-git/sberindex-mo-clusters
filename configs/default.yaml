@@ -1,0 +1,75 @@
+# Конфигурация конвейера «Типы локальных экономик России».
+# Все гиперпараметры здесь; код их не дублирует. Запуск: python run.py --config configs/default.yaml
+
+seed: 42
+
+data:
+  consumption: data/raw/hackathonlicence/consumption.parquet
+  market_access: data/raw/hackathonlicence/market_access.parquet
+  connection: data/raw/hackathonlicence/connection.parquet
+  reference_table: data/raw/reference/t_dict_municipal_districts.xlsx
+  reference_polygons: data/raw/reference/t_dict_municipal_districts_poly.gpkg
+  reference_year: 2024          # версия границ и названий из справочника
+  external_labels: data/external/ru_official_labels.csv   # официальные метки для внешней проверки (модель их не видит)
+  extra_regions: data/external/new_regions.geojson      # контуры ДНР, ЛНР, Запорожской и Херсонской областей: в справочнике МО их нет, только для карты
+  total_category: "Все категории"
+  categories:                   # профиль строится по этим пяти категориям
+    - "Продовольствие"
+    - "Здоровье"
+    - "Общественное питание"
+    - "Транспорт"
+    - "Маркетплейсы"
+  require_full_series: true     # только МО с полными 24 мес. во всех категориях
+
+features:
+  # Все признаки центрируются медианой по стране в том же окне: тип — это
+  # относительное положение МО, а не номинальный рост цен.
+  summer_months: [6, 7, 8]
+  block_weights:                # вклад блоков в евклидово расстояние
+    level: 1.0                  # 1 признак: лог «Все категории»
+    profile: 1.0                # 5 признаков: центрированный лог-профиль категорий
+    season: 0.7                 # 3 признака: сезонность сверх общероссийской; 0.7 — блоки дают ≈ равные доли разброса (31/36/33%, results/justification.json)
+  scaling: robust               # медиана и IQR, фиксируются по базовому окну
+  weight_sensitivity:           # проверка: вес одного блока меняется, остальные как в итоге (results/weights_sensitivity.csv)
+    level: [0.7, 1.3]
+    profile: [0.7, 1.3]
+    season: [0.5, 1.0]
+
+windows:
+  length: 12                    # скользящее окно, мес.
+  step: 1                       # шаг окна, мес. -> 13 снимков (дек-2023 ... дек-2024)
+  confidence_tau: 0.15          # порог уверенности принадлежности для значимого перехода 2023 -> 2024
+
+graphs:
+  k: 15                         # соседей в kNN-графах: компромисс между шумом единичных корреляций (малое k) и размыванием (большое)
+  k_sensitivity: [5, 10, 15, 20, 30]   # проверка устойчивости типологии к k (results/knn_sensitivity.csv)
+  rules: [attr, corr, cosine, dtw, road]
+  main_rule: corr               # правило рёбер атрибутированной сети (выбор обоснован в отчёте)
+  dtw_band: 2                   # окно Сакое–Тибы, мес.: допускаемый лаг опережения/запаздывания
+  road_type: highway
+
+clustering:
+  k_range: [4, 5, 6, 7, 8, 9, 10, 11, 12]
+  methods: [kmeans, ward, spectral, leiden, kefrin]
+  kefrin_net_share: 0.4         # доля сети в общем разбросе KEFRiN (0 = k-means, ~1 = только сеть)
+  net_share_grid: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]   # развёртка для выбора доли
+  net_share_sw_tolerance: 0.005 # правило: наибольшая доля сети, при которой силуэт падает не больше чем на 0.005
+  spectral_alpha: 0.5           # доля сети в смешанной матрице сходства
+  n_init: 20
+  bootstrap: 20                 # повторов подвыборки 80% для устойчивости
+  bootstrap_frac: 0.8
+  permutation_reps: 50           # случайных перестановок меток для базовой линии индексов
+
+selection:                      # правило выбора (results/selection.json проверяет совпадение с final)
+  min_k_detailed: 6             # детальный уровень — тот же метод, наименьшее k >= 6 (при 4–5 типах сливаются север и Сибирь, сельские подтипы)
+  min_stability: 0.75           # и устойчивость на подвыборках ARI >= 0.75
+
+final:                          # двухуровневая типология (results/methods_icvi.csv, docs/report.md)
+  method: kefrin
+  k: 6                          # детальный уровень
+  macro_k: 4                    # макроуровень: глобальный максимум Коупленда
+
+output:
+  results_dir: results
+  site_data_dir: site/data
+  simplify_tolerance_deg: 0.01  # упрощение полигонов для лендинга

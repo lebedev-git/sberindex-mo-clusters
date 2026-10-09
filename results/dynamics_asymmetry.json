@@ -1,0 +1,9 @@
+[
+  {
+    "from": 1,
+    "to": 5,
+    "forward": 23,
+    "backward": 84,
+    "p_binomial_two_sided": 2.4020282673432805e-09
+  }
+]
